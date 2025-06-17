@@ -11,8 +11,14 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+The script no longer installs packages automatically at runtime. Ensure all
+dependencies are available before launching the tool.
+
 ### Optional: Ultimate Vocal Remover
 By default the separation step uses both [Demucs](https://github.com/facebookresearch/demucs) and Ultimate Vocal Remover (UVR). If `uvr.py` is not available on your system, the script will automatically fall back to using Demucs only. To enable UVR support, clone the UVR repository and ensure the `uvr.py` entry point is on your `PATH`.
+
+Alternatively you can point to the script via the `UVR_PY` environment
+variable.
 
 ### Demucs Usage
 The project invokes Demucs through the local Python environment. Install it with:
