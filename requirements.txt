@@ -1,0 +1,8 @@
+beautifulsoup4
+pytest
+torch
+whisper
+librosa
+numpy
+soundfile
+demucs
