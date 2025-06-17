@@ -1,6 +1,5 @@
 """Stem separation manager for Ultimate Chord Reader."""
 
-
 from __future__ import annotations
 
 import shutil
@@ -16,6 +15,7 @@ from .demucs_loader import run_demucs
 
 
 def _rms(path: Path) -> float:
+    """Return root-mean-square level for an audio file."""
     data, _ = sf.read(str(path))
     return float(np.sqrt(np.mean(np.square(data))))
 
@@ -30,7 +30,7 @@ def compare_stems(inst1: Path, inst2: Path) -> float:
 
 
 def separate_and_score(input_path: str) -> Tuple[Path, Path, float]:
-    """Run both separation methods and return best stems and confidence."""
+    """Run both separation methods and return best stems and a confidence score."""
     tempdir = Path(tempfile.mkdtemp())
     uvr_dir = tempdir / "uvr"
     demucs_dir = tempdir / "demucs"
@@ -45,7 +45,7 @@ def separate_and_score(input_path: str) -> Tuple[Path, Path, float]:
     else:
         vocal, inst = vocal_demucs, inst_demucs
 
-    confidence = score
+    confidence = float(score)
 
     # Copy chosen stems to a stable location
     final_dir = tempdir / "final"

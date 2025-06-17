@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
 from typing import List, Tuple
 
 import whisper
@@ -18,9 +16,9 @@ def transcribe(vocal_path: str) -> List[Tuple[float, float, str, float]]:
 
     lines = []
     for seg in result.get("segments", []):
-        start = seg.get("start", 0.0)
-        end = seg.get("end", 0.0)
+        start = float(seg.get("start", 0.0))
+        end = float(seg.get("end", 0.0))
         text = seg.get("text", "").strip()
-        conf = seg.get("avg_logprob", 0.0)
+        conf = float(seg.get("avg_logprob", 0.0))
         lines.append((start, end, text, conf))
     return lines

@@ -9,7 +9,7 @@ import librosa
 import numpy as np
 
 
-def analyze_instrumental(inst_path: str, sr: int = 44100) -> Tuple[float, str, List[Tuple[str, float]]]:
+def analyze_instrumental(inst_path: str, sr: int = 44100) -> Tuple[float, str, List[Tuple[str, float, float]]]:
     """Analyze BPM, key, and chords from an instrumental stem."""
     y, sr = librosa.load(inst_path, sr=sr)
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
@@ -28,18 +28,19 @@ def analyze_instrumental(inst_path: str, sr: int = 44100) -> Tuple[float, str, L
         # TODO: expand chord templates
     }
 
-    chords = []
+    chords: List[Tuple[str, float, float]] = []
     for i in range(chroma.shape[1]):
         frame = chroma[:, i]
         best = None
         best_score = -1.0
         for name, tmpl in chord_templates.items():
-            score = np.dot(frame, tmpl)
+            tmpl_vec = np.array(tmpl)
+            score = float(np.dot(frame, tmpl_vec) / (np.linalg.norm(frame) * np.linalg.norm(tmpl_vec) + 1e-6))
             if score > best_score:
                 best = name
                 best_score = score
         if best:
-            time = librosa.frames_to_time(i, sr=sr)
-            chords.append((best, time))
+            time = float(librosa.frames_to_time(i, sr=sr))
+            chords.append((best, time, best_score))
 
     return tempo, est_key, chords
