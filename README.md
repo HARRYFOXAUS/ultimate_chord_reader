@@ -5,3 +5,14 @@ The `ultimate_chord_reader.py` script provides a local workflow for transcribing
 ### Optional: Ultimate Vocal Remover
 By default the separation step uses both [Demucs](https://github.com/facebookresearch/demucs) and Ultimate Vocal Remover (UVR). If `uvr.py` is not available on your system, the script will automatically fall back to using Demucs only. To enable UVR support, clone the UVR repository and ensure the `uvr.py` entry point is on your `PATH`.
 
+### Demucs Usage
+The project invokes Demucs through the local Python environment. Install it with:
+
+```bash
+pip install demucs
+```
+
+If Demucs is missing, the separation step will log a warning and continue with
+UVR only. You may also run Demucs manually and place the resulting stems next to
+your input files.
+
