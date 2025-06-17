@@ -1,7 +1,8 @@
 """Stem separation manager for Ultimate Chord Reader.
 
-Both Demucs and UVR are attempted if available. If Demucs is missing, the
-process continues with UVR only and logs a warning.
+Both Demucs and UVR are attempted if available. Demucs is invoked via its
+Python API. If Demucs is missing, the process continues with UVR only and logs
+a warning.
 """
 
 from __future__ import annotations
