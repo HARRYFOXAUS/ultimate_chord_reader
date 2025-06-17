@@ -1,4 +1,8 @@
-"""Stem separation manager for Ultimate Chord Reader."""
+"""Stem separation manager for Ultimate Chord Reader.
+
+Both Demucs and UVR are attempted if available. If Demucs is missing, the
+process continues with UVR only and logs a warning.
+"""
 
 from __future__ import annotations
 
@@ -37,23 +41,31 @@ def separate_and_score(input_path: str) -> Tuple[Path, Path, float]:
 
     try:
         vocal_uvr, inst_uvr = run_uvr(input_path, str(uvr_dir))
-
     except (FileNotFoundError, RuntimeError):
         vocal_uvr, inst_uvr = None, None
 
-    vocal_demucs, inst_demucs = run_demucs(input_path, str(demucs_dir))
+    try:
+        vocal_demucs, inst_demucs = run_demucs(input_path, str(demucs_dir))
+    except (FileNotFoundError, RuntimeError) as exc:
+        print(f"Demucs unavailable: {exc}")
+        vocal_demucs, inst_demucs = None, None
 
-    if inst_uvr is not None:
+    if inst_uvr is not None and inst_demucs is not None:
         score = compare_stems(inst_uvr, inst_demucs)
     else:
         score = 0.0
 
-    if score >= 0.5 and vocal_uvr is not None and inst_uvr is not None:
+    if vocal_demucs is None or inst_demucs is None:
+        if vocal_uvr is None or inst_uvr is None:
+            raise RuntimeError("No separation method available")
         vocal, inst = vocal_uvr, inst_uvr
+        confidence = 0.0
     else:
-        vocal, inst = vocal_demucs, inst_demucs
-
-    confidence = float(score)
+        if score >= 0.5 and vocal_uvr is not None and inst_uvr is not None:
+            vocal, inst = vocal_uvr, inst_uvr
+        else:
+            vocal, inst = vocal_demucs, inst_demucs
+        confidence = float(score)
 
     # Copy chosen stems to a stable location
     final_dir = tempdir / "final"
