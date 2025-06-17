@@ -37,8 +37,10 @@ def separate_and_score(input_path: str) -> Tuple[Path, Path, float]:
 
     try:
         vocal_uvr, inst_uvr = run_uvr(input_path, str(uvr_dir))
-    except FileNotFoundError:
+
+    except (FileNotFoundError, RuntimeError):
         vocal_uvr, inst_uvr = None, None
+
     vocal_demucs, inst_demucs = run_demucs(input_path, str(demucs_dir))
 
     if inst_uvr is not None:

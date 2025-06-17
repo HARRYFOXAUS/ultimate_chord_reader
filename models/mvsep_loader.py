@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from subprocess import CalledProcessError
 from pathlib import Path
 from typing import Tuple
 
@@ -33,7 +34,10 @@ def run_uvr(input_path: str, output_dir: str) -> Tuple[Path, Path]:
         "--model",
         "UVR-MDX",
     ]
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True)
+    except (FileNotFoundError, CalledProcessError) as exc:
+        raise RuntimeError("UVR execution failed") from exc
 
     vocal_path = output / "vocals.wav"
     instrumental_path = output / "instrumental.wav"
