@@ -35,12 +35,18 @@ def separate_and_score(input_path: str) -> Tuple[Path, Path, float]:
     uvr_dir = tempdir / "uvr"
     demucs_dir = tempdir / "demucs"
 
-    vocal_uvr, inst_uvr = run_uvr(input_path, str(uvr_dir))
+    try:
+        vocal_uvr, inst_uvr = run_uvr(input_path, str(uvr_dir))
+    except FileNotFoundError:
+        vocal_uvr, inst_uvr = None, None
     vocal_demucs, inst_demucs = run_demucs(input_path, str(demucs_dir))
 
-    score = compare_stems(inst_uvr, inst_demucs)
+    if inst_uvr is not None:
+        score = compare_stems(inst_uvr, inst_demucs)
+    else:
+        score = 0.0
 
-    if score >= 0.5:
+    if score >= 0.5 and vocal_uvr is not None and inst_uvr is not None:
         vocal, inst = vocal_uvr, inst_uvr
     else:
         vocal, inst = vocal_demucs, inst_demucs
