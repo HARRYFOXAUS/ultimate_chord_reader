@@ -1,3 +1,7 @@
 ## Ultimate Chord Reader
 
 The `ultimate_chord_reader.py` script provides a local workflow for transcribing songs. Drop audio files into `input_songs/` and run `python ultimate_chord_reader.py` to generate text chord charts in `output_charts/`.
+
+### Optional: Ultimate Vocal Remover
+
+By default the separation step uses both [Demucs](https://github.com/facebookresearch/demucs) and Ultimate Vocal Remover (UVR). If `uvr.py` is missing or UVR fails to run, the script will automatically fall back to using Demucs only. To enable UVR support, clone the UVR repository and ensure the `uvr.py` entry point is on your `PATH`.
