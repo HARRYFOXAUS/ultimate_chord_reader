@@ -1,8 +1,9 @@
 """Demucs loader for Ultimate Chord Reader.
 
-The module prefers the Demucs Python API and only falls back to a subprocess
-call.  The subprocess invocation uses ``python -m demucs.separate`` so that a
-local virtual environment is honored.
+The module prefers the Demucs Python API and only falls back to invoking the
+``demucs`` command-line tool found on ``PATH``.  This avoids relying on a
+system-wide installation and keeps execution within the current virtual
+environment.
 
 If Demucs is not installed, :func:`run_demucs` raises ``FileNotFoundError`` with
 instructions for installing the package or running separation manually.
@@ -47,13 +48,16 @@ def run_demucs(input_path: str, output_dir: str) -> Tuple[Path, Path]:
         except Exception as exc:
             raise RuntimeError("Demucs API failed to run") from exc
     else:
-        cmd = [sys.executable, "-m", "demucs.separate", str(input_path), "--out", str(output)]
+        exe = shutil.which("demucs")
+        if exe is None:
+            raise FileNotFoundError(
+                "Demucs executable not found. Install it with 'pip install demucs' in your virtual environment."
+            )
+        cmd = [exe, "separate", str(input_path), "--out", str(output)]
         try:
             subprocess.run(cmd, check=True)
-        except (FileNotFoundError, CalledProcessError) as exc:
-            raise FileNotFoundError(
-                "Demucs is not installed. Install it with 'pip install demucs' or run separation manually."
-            ) from exc
+        except CalledProcessError as exc:
+            raise RuntimeError("Demucs CLI failed") from exc
 
     vocal_path = demucs_out / "vocals.wav"
     instrumental_path = demucs_out / "no_vocals.wav"
