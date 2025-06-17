@@ -9,7 +9,9 @@ import librosa
 import numpy as np
 
 
-def analyze_instrumental(inst_path: str, sr: int = 44100) -> Tuple[float, str, List[Tuple[str, float, float]]]:
+def analyze_instrumental(
+    inst_path: str, sr: int = 44100
+) -> Tuple[float, str, List[Tuple[str, float, float]]]:
     """Analyze BPM, key, and chords from an instrumental stem."""
     y, sr = librosa.load(inst_path, sr=sr)
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
@@ -17,9 +19,7 @@ def analyze_instrumental(inst_path: str, sr: int = 44100) -> Tuple[float, str, L
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
     key = librosa.feature.chroma_stft(y=y, sr=sr).mean(axis=1)
     key_idx = key.argmax()
-    keys = [
-        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
-    ]
+    keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     est_key = keys[key_idx % 12]
 
     chord_templates = {
@@ -35,7 +35,10 @@ def analyze_instrumental(inst_path: str, sr: int = 44100) -> Tuple[float, str, L
         best_score = -1.0
         for name, tmpl in chord_templates.items():
             tmpl_vec = np.array(tmpl)
-            score = float(np.dot(frame, tmpl_vec) / (np.linalg.norm(frame) * np.linalg.norm(tmpl_vec) + 1e-6))
+            score = float(
+                np.dot(frame, tmpl_vec)
+                / (np.linalg.norm(frame) * np.linalg.norm(tmpl_vec) + 1e-6)
+            )
             if score > best_score:
                 best = name
                 best_score = score

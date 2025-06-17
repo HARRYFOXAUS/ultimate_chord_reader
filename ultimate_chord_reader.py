@@ -2,24 +2,28 @@
 
 from __future__ import annotations
 
+"""Entry point for Ultimate Chord Reader."""
+
 import shutil
 from pathlib import Path
 from typing import List, Tuple
 
-# Auto-install dependencies
-REQUIRED = [
-    "torch",
-    "whisper",
-    "librosa",
-    "numpy",
-    "soundfile",
-]
-for pkg in REQUIRED:
+# Validate dependencies early and provide a helpful error message instead of
+# attempting implicit installation.  This keeps the runtime predictable and
+# avoids long network operations when a package is missing.
+REQUIRED = ["torch", "whisper", "librosa", "numpy", "soundfile"]
+missing: list[str] = []
+for _pkg in REQUIRED:
     try:
-        __import__(pkg)
-    except Exception:
-        import subprocess
-        subprocess.check_call(["python", "-m", "pip", "install", pkg])
+        __import__(_pkg)
+    except Exception:  # pragma: no cover - import failure path
+        missing.append(_pkg)
+
+if missing:  # pragma: no cover - import failure path
+    raise RuntimeError(
+        "Missing required packages: %s. Install them with 'pip install -r requirements.txt'"
+        % ", ".join(missing)
+    )
 
 
 # User configuration
@@ -85,9 +89,9 @@ def process_file(path: str) -> Path:
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(chart)
 
-    # Remove stems
+    # Remove temporary stems directory entirely
     stem_root = vocal.parent
-    shutil.rmtree(stem_root, ignore_errors=True)
+    shutil.rmtree(stem_root.parent, ignore_errors=True)
 
     return out_path
 
@@ -96,9 +100,15 @@ def process_file(path: str) -> Path:
 # TODO: Cloud model hook
 # TODO: Feedback loop for self-training
 
-if __name__ == "__main__":
+
+def main() -> None:
+    """Process all audio files in :data:`INPUT_DIR`."""
     INPUT_DIR.mkdir(exist_ok=True)
     for file in INPUT_DIR.glob("*.*"):
         print(f"Processing {file}")
         out = process_file(str(file))
         print(f"Saved chart to {out}")
+
+
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
+    main()

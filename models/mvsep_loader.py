@@ -1,15 +1,26 @@
 """MVSEP loader for Ultimate Chord Reader.
-Runs Ultimate Vocal Remover (UVR) using MVSEP-quality MDX models.
-Assumes `uvr.py` is installed and available on the system path.
+
+This wrapper launches Ultimate Vocal Remover (UVR) via ``uvr.py``.  The path to
+``uvr.py`` is detected via the ``UVR_PY`` environment variable or ``PATH``.  The
+function attempts to locate the resulting stems regardless of the exact file
+names produced by the configured model.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from subprocess import CalledProcessError
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
+
+
+def _find_stem(directory: Path, key: str) -> Optional[Path]:
+    for p in directory.rglob("*.wav"):
+        if key.lower() in p.stem.lower():
+            return p
+    return None
 
 
 def run_uvr(input_path: str, output_dir: str) -> Tuple[Path, Path]:
@@ -17,11 +28,10 @@ def run_uvr(input_path: str, output_dir: str) -> Tuple[Path, Path]:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
-    uvr_exe = shutil.which("uvr.py")
+    uvr_exe = os.environ.get("UVR_PY") or shutil.which("uvr.py")
     if not uvr_exe or not Path(uvr_exe).exists():
         raise FileNotFoundError(
-            "uvr.py not found. Install Ultimate Vocal Remover or set the path "
-            "to the uvr.py script."
+            "uvr.py not found. Install Ultimate Vocal Remover or set the UVR_PY environment variable."
         )
 
     cmd = [
@@ -39,6 +49,8 @@ def run_uvr(input_path: str, output_dir: str) -> Tuple[Path, Path]:
     except (FileNotFoundError, CalledProcessError) as exc:
         raise RuntimeError("UVR execution failed") from exc
 
-    vocal_path = output / "vocals.wav"
-    instrumental_path = output / "instrumental.wav"
+    vocal_path = _find_stem(output, "vocals")
+    instrumental_path = _find_stem(output, "instrumental")
+    if vocal_path is None or instrumental_path is None:
+        raise RuntimeError("UVR did not produce expected stems")
     return vocal_path, instrumental_path
