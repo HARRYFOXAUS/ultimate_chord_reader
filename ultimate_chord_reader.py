@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 from pathlib import Path
 from typing import List, Tuple
-
-import numpy as np
 
 # Auto-install dependencies
 REQUIRED = [
@@ -24,11 +21,11 @@ for pkg in REQUIRED:
         import subprocess
         subprocess.check_call(["python", "-m", "pip", "install", pkg])
 
+
 # User configuration
 INPUT_DIR = Path("input_songs")
 OUTPUT_DIR = Path("output_charts")
 TIME_SIGNATURE = "4/4"  # default time signature
-
 
 from models.separation_manager import separate_and_score
 from lyrics import transcribe
@@ -41,7 +38,7 @@ def format_chart(
     key: str,
     time_sig: str,
     lyrics: List[Tuple[float, float, str, float]],
-    chords: List[Tuple[str, float]],
+    chords: List[Tuple[str, float, float]],
     confidence: float,
 ) -> str:
     """Create a plain text chord chart."""
@@ -54,9 +51,18 @@ def format_chart(
         "",
     ]
 
+    beats_per_bar = int(time_sig.split("/")[0]) if "/" in time_sig else 4
+    beat_len = 60.0 / bpm
+    bar_len = beats_per_bar * beat_len
+
     chart_lines = []
     chord_idx = 0
+    current_bar = -1
     for start, end, line, conf in lyrics:
+        bar = int(start / bar_len)
+        if bar != current_bar:
+            chart_lines.append("|")
+            current_bar = bar
         while chord_idx < len(chords) and chords[chord_idx][1] <= start:
             chord_idx += 1
         chord = chords[chord_idx - 1][0] if chord_idx else ""
@@ -91,8 +97,8 @@ def process_file(path: str) -> Path:
 # TODO: Feedback loop for self-training
 
 if __name__ == "__main__":
+    INPUT_DIR.mkdir(exist_ok=True)
     for file in INPUT_DIR.glob("*.*"):
         print(f"Processing {file}")
         out = process_file(str(file))
         print(f"Saved chart to {out}")
-
