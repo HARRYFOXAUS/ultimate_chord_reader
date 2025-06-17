@@ -5,11 +5,13 @@ Assumes `uvr.py` is installed and available on the system path.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from subprocess import CalledProcessError
 from pathlib import Path
 from typing import Tuple
+import sys
 
 
 def run_uvr(input_path: str, output_dir: str) -> Tuple[Path, Path]:
@@ -17,7 +19,7 @@ def run_uvr(input_path: str, output_dir: str) -> Tuple[Path, Path]:
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
-    uvr_exe = shutil.which("uvr.py")
+    uvr_exe = os.environ.get("UVR_PATH") or shutil.which("uvr.py")
     if not uvr_exe or not Path(uvr_exe).exists():
         raise FileNotFoundError(
             "uvr.py not found. Install Ultimate Vocal Remover or set the path "
@@ -25,7 +27,7 @@ def run_uvr(input_path: str, output_dir: str) -> Tuple[Path, Path]:
         )
 
     cmd = [
-        "python",
+        sys.executable,
         uvr_exe,
         "--input",
         str(input_path),

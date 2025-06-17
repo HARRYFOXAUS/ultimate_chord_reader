@@ -7,6 +7,7 @@ a warning.
 
 from __future__ import annotations
 
+import logging
 import shutil
 import tempfile
 from pathlib import Path
@@ -17,6 +18,9 @@ import soundfile as sf
 
 from .mvsep_loader import run_uvr
 from .demucs_loader import run_demucs
+
+
+logger = logging.getLogger(__name__)
 
 
 def _rms(path: Path) -> float:
@@ -42,13 +46,14 @@ def separate_and_score(input_path: str) -> Tuple[Path, Path, float]:
 
     try:
         vocal_uvr, inst_uvr = run_uvr(input_path, str(uvr_dir))
-    except (FileNotFoundError, RuntimeError):
+    except (FileNotFoundError, RuntimeError) as exc:
+        logger.warning("UVR unavailable: %s", exc)
         vocal_uvr, inst_uvr = None, None
 
     try:
         vocal_demucs, inst_demucs = run_demucs(input_path, str(demucs_dir))
     except (FileNotFoundError, RuntimeError) as exc:
-        print(f"Demucs unavailable: {exc}")
+        logger.warning("Demucs unavailable: %s", exc)
         vocal_demucs, inst_demucs = None, None
 
     if inst_uvr is not None and inst_demucs is not None:
@@ -58,7 +63,9 @@ def separate_and_score(input_path: str) -> Tuple[Path, Path, float]:
 
     if vocal_demucs is None or inst_demucs is None:
         if vocal_uvr is None or inst_uvr is None:
-            raise RuntimeError("No separation method available")
+            raise RuntimeError(
+                "No separation method available. Install Demucs or set UVR_PATH"
+            )
         vocal, inst = vocal_uvr, inst_uvr
         confidence = 0.0
     else:
