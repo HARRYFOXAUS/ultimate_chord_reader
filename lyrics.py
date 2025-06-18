@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List, Tuple
 
-import whisper
+import whisper  # provided by the *openai-whisper* package (pip install openai-whisper)
 
 
 def transcribe(vocal_path: str) -> List[Tuple[float, float, str, float]]:
