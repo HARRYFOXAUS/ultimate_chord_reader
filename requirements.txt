@@ -1,7 +1,6 @@
 beautifulsoup4
 pytest
 torch
-whisper
 librosa
 numpy
 soundfile
@@ -9,3 +8,4 @@ demucs==4.0.1
 dora-search>=0.1.12
 treetable==0.2.5
 imageio-ffmpeg>=0.4.9
+openai-whisper>=20231101
