@@ -6,6 +6,15 @@ from typing import List, Tuple
 
 import whisper  # provided by the *openai-whisper* package (pip install openai-whisper)
 
+import os, shutil
+import imageio_ffmpeg  # provides self-contained ffmpeg & ffprobe binaries
+
+# Ensure the bundled ffmpeg and ffprobe executables are visible to Whisper/Demucs
+for _exe in (imageio_ffmpeg.get_ffmpeg_exe(), imageio_ffmpeg.get_ffprobe_exe()):
+    _dir = os.path.dirname(_exe)
+    if not shutil.which(os.path.basename(_exe)):
+        os.environ["PATH"] = _dir + os.pathsep + os.environ.get("PATH", "")
+
 
 def transcribe(vocal_path: str) -> List[Tuple[float, float, str, float]]:
     """Transcribe the given vocal stem using Whisper.
