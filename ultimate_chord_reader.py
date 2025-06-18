@@ -12,14 +12,24 @@ from typing import List, Tuple
 # attempting implicit installation.  This keeps the runtime predictable and
 # avoids long network operations when a package is missing.
 
-REQUIRED = [ "torch", "whisper", "librosa", "numpy", "soundfile", "demucs", "dora-search", "treetable", "imageio-ffmpeg",]
+REQUIRED = {
+    "torch": "torch",
+    "whisper": "openai-whisper",
+    "librosa": "librosa",
+    "numpy": "numpy",
+    "soundfile": "soundfile",
+    "demucs": "demucs",
+    "dora": "dora-search",
+    "treetable": "treetable",
+    "imageio_ffmpeg": "imageio-ffmpeg",
+}
 
 missing: list[str] = []
-for _pkg in REQUIRED:
+for import_name, pip_name in REQUIRED.items():
     try:
-        __import__(_pkg)
+        __import__(import_name)
     except Exception:  # pragma: no cover - import failure path
-        missing.append(_pkg)
+        missing.append(pip_name)
 
 def ensure_dependencies() -> None:
     """Install any missing dependencies using pip."""

@@ -1,7 +1,7 @@
 beautifulsoup4
 pytest
 torch
-whisper
+openai-whisper
 librosa
 numpy
 soundfile
