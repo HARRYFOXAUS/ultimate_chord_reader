@@ -5,6 +5,8 @@ from __future__ import annotations
 """Entry point for Ultimate Chord Reader."""
 
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import List, Tuple
 
@@ -19,11 +21,15 @@ for _pkg in REQUIRED:
     except Exception:  # pragma: no cover - import failure path
         missing.append(_pkg)
 
-if missing:  # pragma: no cover - import failure path
-    raise RuntimeError(
-        "Missing required packages: %s. Install them with 'pip install -r requirements.txt'"
-        % ", ".join(missing)
-    )
+def ensure_dependencies() -> None:
+    """Install any missing dependencies using pip."""
+    if not missing:
+        return
+    print(f"Installing missing packages: {', '.join(missing)}")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
+
+
+ensure_dependencies()
 
 
 # User configuration
@@ -104,7 +110,11 @@ def process_file(path: str) -> Path:
 def main() -> None:
     """Process all audio files in :data:`INPUT_DIR`."""
     INPUT_DIR.mkdir(exist_ok=True)
-    for file in INPUT_DIR.glob("*.*"):
+    for file in INPUT_DIR.iterdir():
+        if not file.is_file():
+            continue
+        if file.suffix.lower() not in {".mp3", ".wav", ".flac", ".m4a", ".ogg"}:
+            continue
         print(f"Processing {file}")
         out = process_file(str(file))
         print(f"Saved chart to {out}")

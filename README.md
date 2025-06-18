@@ -11,8 +11,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-The script no longer installs packages automatically at runtime. Ensure all
-dependencies are available before launching the tool.
+The script will attempt to install any missing Python packages when you run it.
+You can still pre-install everything manually with `pip install -r requirements.txt`.
 
 ### Optional: Ultimate Vocal Remover
 By default the separation step uses both [Demucs](https://github.com/facebookresearch/demucs) and Ultimate Vocal Remover (UVR). If `uvr.py` is not available on your system, the script will automatically fall back to using Demucs only. To enable UVR support, clone the UVR repository and ensure the `uvr.py` entry point is on your `PATH`.
