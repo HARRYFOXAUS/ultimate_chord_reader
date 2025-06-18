@@ -1,100 +1,143 @@
 """Demucs loader for Ultimate Chord Reader.
 
-This module prefers the Demucs Python API for separation but falls back to the
-``demucs`` CLI if the modules are unavailable.  Providing both options makes the
-tool usable in more environments and gives clearer error messages when neither
-is installed.
-"""
+Order of attempts
+-----------------
+1.  Demucs **Python API**  (fast, no subprocess)
+2.  CLI via **python -m demucs.separate**  (works even if `demucs` isn’t on $PATH)
+3.  CLI via **demucs** binary on $PATH     (final fallback)
 
+Returns
+-------
+Tuple[Path, Path]  →  (vocal_stem, instrumental_stem)
+"""
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Tuple
+import sys
 import shutil
 import subprocess
+from pathlib import Path
+from typing import Tuple
 
-try:  # pragma: no cover - optional dependency
+# ----------------------------------------------------------------------
+# Try to import the Python API. If anything fails we’ll drop to the CLI.
+# ----------------------------------------------------------------------
+try:  # pragma: no cover – optional dependency
     from demucs.apply import apply_model
     from demucs.pretrained import get_model
     from demucs.audio import AudioFile, save_audio
-    import torch
-except Exception:  # pragma: no cover - optional dependency
-    apply_model = None  # type: ignore
-    get_model = None  # type: ignore
-    AudioFile = None  # type: ignore
-    save_audio = None  # type: ignore
-    torch = None  # type: ignore
+    import torch  # noqa: F401
+except Exception as exc:  # pragma: no cover
+    print(f"[Demucs] Python API unavailable ({exc}); falling back to CLI.")
+    apply_model = get_model = AudioFile = save_audio = None  # type: ignore
 
 
-def run_demucs(input_path: str, output_dir: str) -> Tuple[Path, Path]:
-    """Run Demucs and return paths to vocal and instrumental stems."""
-    output = Path(output_dir)
-    output.mkdir(parents=True, exist_ok=True)
-
-    if (
-        apply_model is None
-        or get_model is None
-        or AudioFile is None
-        or save_audio is None
-        or torch is None
-    ):
-        # Fallback to CLI if Python modules are unavailable
-        demucs_exe = shutil.which("demucs")
-        if not demucs_exe:
-            raise FileNotFoundError(
-                "Demucs executable not found. Install it with 'pip install demucs'."
-            )
-
-        cmd = [demucs_exe, "-o", str(output), input_path]
-        try:
-            subprocess.run(cmd, check=True)
-        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
-            raise RuntimeError("Demucs CLI failed") from exc
-
-        # Locate produced stems
-        demucs_out = next((p for p in output.rglob("vocals.wav")), None)
-        if demucs_out is None:
-            raise RuntimeError("Demucs output not found")
-        vocal_path = demucs_out
-        inst_candidate = next(
-            (p for p in demucs_out.parent.glob("*.wav") if "vocals" not in p.name),
-            None,
-        )
-        instrumental_path = inst_candidate or demucs_out.parent / "no_vocals.wav"
-        return vocal_path, instrumental_path
-
-    print("Using Demucs Python API for separation.")
-
-    demucs_out = output / Path(input_path).stem
-
+# ----------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------
+def _run(cmd: list[str]) -> None:
+    """Run *cmd* and re-raise failures as RuntimeError."""
     try:
-        model = get_model("htdemucs")
-        wav = AudioFile(input_path).read(
-            streams=0,
-            samplerate=model.samplerate,
-            channels=model.audio_channels,
-        )
-        ref = wav.mean(0)
-        wav = (wav - ref.mean()) / ref.std()
-        sources = apply_model(
-            model, wav[None], split=True, overlap=0.25, progress=False
-        )[0]
-        sources = sources * ref.std() + ref.mean()
-        demucs_out.mkdir(parents=True, exist_ok=True)
-        for source, name in zip(sources, model.sources):
-            dest = demucs_out / f"{name}.wav"
-            save_audio(source, dest, model.samplerate)
-    except Exception as exc:
-        raise RuntimeError("Demucs API failed to run") from exc
+        subprocess.run(cmd, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError("Demucs CLI failed") from exc
 
-    vocal_path = demucs_out / "vocals.wav"
-    instrumental_path = demucs_out / "no_vocals.wav"
 
-    if not instrumental_path.exists():
-        # Some models name the instrumental stem differently
-        for p in demucs_out.glob("*.wav"):
-            if "vocals" not in p.name:
-                instrumental_path = p
-                break
+# ----------------------------------------------------------------------
+# Main public entry-point
+# ----------------------------------------------------------------------
+def run_demucs(input_path: str, output_dir: str) -> Tuple[Path, Path]:
+    """Return (vocal_stem, instrumental_stem) for *input_path*."""
+    out_root = Path(output_dir).expanduser().resolve()
+    out_root.mkdir(parents=True, exist_ok=True)
 
-    return vocal_path, instrumental_path
+    # 1) ---------- Python-API fast path --------------------------------
+    if all(obj is not None for obj in (apply_model, get_model, AudioFile, save_audio)):
+        # Tell static type-checkers these symbols are non-None from here
+        assert apply_model and get_model and AudioFile and save_audio
+
+        try:
+            model = get_model("htdemucs")
+            wav = AudioFile(Path(input_path)).read(          # cast to Path
+                streams=0,                                   # type: ignore[arg-type]
+                samplerate=model.samplerate,
+                channels=model.audio_channels,
+            )
+            ref = wav.mean(0)
+            wav = (wav - ref.mean()) / ref.std()
+
+            sources = apply_model(
+                model, wav[None], split=True, overlap=0.25, progress=False
+            )[0]
+            sources = sources * ref.std() + ref.mean()
+
+            stems_dir = out_root / Path(input_path).stem
+            stems_dir.mkdir(exist_ok=True)
+            for source, name in zip(sources, model.sources):
+                save_audio(source, stems_dir / f"{name}.wav", model.samplerate)
+
+            vocal = stems_dir / "vocals.wav"
+            inst = stems_dir / "no_vocals.wav"
+            if not inst.exists():
+                inst = next(stems_dir.glob("*accompaniment*.wav"), inst)
+
+            if vocal.exists() and inst.exists():
+                print("[Demucs] Separated with Python API")
+                return vocal, inst
+
+            raise RuntimeError("Demucs API produced no stems")
+
+        except Exception as exc:
+            print(f"[Demucs] API failed ({exc}); switching to CLI.")
+
+    # 2) ---------- CLI via python -m demucs.separate -------------------
+    cli_cmd = [
+        sys.executable, "-m", "demucs.separate",
+        "--two-stems=vocals",
+        "-o", str(out_root),
+        input_path,
+    ]
+    try:
+        _run(cli_cmd)
+    except RuntimeError:
+        # 3) ---- Final fallback: standalone `demucs` binary ------------
+        demucs_bin = shutil.which("demucs")
+        if not demucs_bin:
+            raise FileNotFoundError(
+                "Demucs unavailable via API or CLI. "
+                "Run `pip install demucs` in this environment."
+            )
+        _run([
+            demucs_bin, "--two-stems=vocals",
+            "-o", str(out_root), input_path,
+        ])
+
+    # -------- Locate stems the CLI just wrote --------------------------
+    wav_files = list(out_root.rglob("*.wav"))
+    print("[Demucs-debug] searched", out_root, "found", len(wav_files), "wav files")
+    for p in out_root.rglob("*"):    # show the tree once
+        print("   ", p.relative_to(out_root))
+    if not wav_files:
+        raise RuntimeError("Demucs CLI produced no wav files")
+
+        # Pick stems robustly: ‘vocals.wav’ vs ‘no_vocals.wav’ (or accompaniment)
+    vocal = next((p for p in wav_files if p.name.lower().startswith("vocals")), None)
+    inst  = next(
+        (p for p in wav_files if p is not vocal and (
+            "no_vocals" in p.name.lower() or "accompaniment" in p.name.lower())),
+        None,
+    )
+    if inst is None and vocal is not None and len(wav_files) == 2:
+        # fallback: exactly two files, so the other one must be instrumental
+        inst = next(p for p in wav_files if p is not vocal)
+
+    if vocal is None or inst is None:
+        raise RuntimeError("Couldn’t find expected stems in Demucs output")
+
+    print("[Demucs] Separated with CLI →", vocal.relative_to(out_root))
+    return vocal, inst
+
+    # ------------------------------------------------------------------
+    # Unreachable: every path above returns or raises.
+    # Added to satisfy static type-checkers.
+    # ------------------------------------------------------------------
+    raise RuntimeError("Demucs failed on all attempted paths (unreachable)")

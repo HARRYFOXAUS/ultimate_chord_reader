@@ -5,4 +5,7 @@ whisper
 librosa
 numpy
 soundfile
-demucs
+demucs==4.0.1
+dora-search>=0.1.12
+treetable==0.2.5
+imageio-ffmpeg>=0.4.9

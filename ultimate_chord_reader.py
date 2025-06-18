@@ -11,7 +11,9 @@ from typing import List, Tuple
 # Validate dependencies early and provide a helpful error message instead of
 # attempting implicit installation.  This keeps the runtime predictable and
 # avoids long network operations when a package is missing.
-REQUIRED = ["torch", "whisper", "librosa", "numpy", "soundfile", "demucs"]
+
+REQUIRED = [ "torch", "whisper", "librosa", "numpy", "soundfile", "demucs", "dora-search", "treetable", "imageio-ffmpeg",]
+
 missing: list[str] = []
 for _pkg in REQUIRED:
     try:
