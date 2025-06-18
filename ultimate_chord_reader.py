@@ -1,8 +1,6 @@
-"""Ultimate Chord Reader main application."""
+"""Entry point for Ultimate Chord Reader."""
 
 from __future__ import annotations
-
-"""Entry point for Ultimate Chord Reader."""
 
 import shutil
 import subprocess
@@ -13,7 +11,7 @@ from typing import List, Tuple
 # Validate dependencies early and provide a helpful error message instead of
 # attempting implicit installation.  This keeps the runtime predictable and
 # avoids long network operations when a package is missing.
-REQUIRED = ["torch", "whisper", "librosa", "numpy", "soundfile"]
+REQUIRED = ["torch", "whisper", "librosa", "numpy", "soundfile", "demucs"]
 missing: list[str] = []
 for _pkg in REQUIRED:
     try:
@@ -29,17 +27,10 @@ def ensure_dependencies() -> None:
     subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
 
 
-ensure_dependencies()
-
-
 # User configuration
 INPUT_DIR = Path("input_songs")
 OUTPUT_DIR = Path("output_charts")
 TIME_SIGNATURE = "4/4"  # default time signature
-
-from models.separation_manager import separate_and_score
-from lyrics import transcribe
-from chords import analyze_instrumental
 
 
 def format_chart(
@@ -83,6 +74,10 @@ def format_chart(
 
 def process_file(path: str) -> Path:
     """Process a single audio file and output chord chart path."""
+    from models.separation_manager import separate_and_score
+    from lyrics import transcribe
+    from chords import analyze_instrumental
+
     vocal, inst, conf = separate_and_score(path)
     lyric_lines = transcribe(str(vocal))
     bpm, key, chord_seq = analyze_instrumental(str(inst))
@@ -109,6 +104,7 @@ def process_file(path: str) -> Path:
 
 def main() -> None:
     """Process all audio files in :data:`INPUT_DIR`."""
+    ensure_dependencies()
     INPUT_DIR.mkdir(exist_ok=True)
     for file in INPUT_DIR.iterdir():
         if not file.is_file():

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import List, Tuple
-from pathlib import Path
 
 import librosa
 import numpy as np
