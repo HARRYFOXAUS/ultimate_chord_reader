@@ -8,6 +8,27 @@ import sys
 from pathlib import Path
 from typing import List, Tuple
 
+import os, shutil, pathlib, imageio_ffmpeg
+
+for getter, canon in (
+    (imageio_ffmpeg.get_ffmpeg_exe, "ffmpeg"),
+    (getattr(imageio_ffmpeg, "get_ffprobe_exe", lambda: None), "ffprobe"),
+):
+    _exe = getter()
+    if not _exe:          # get_ffprobe_exe may be missing on old versions
+        continue
+    _dir = os.path.dirname(_exe)
+    os.environ["PATH"] = _dir + os.pathsep + os.environ.get("PATH", "")
+
+    # If the binary name isn't the canonical one, make a symlink/copy
+    if pathlib.Path(_exe).name != canon:
+        target = pathlib.Path(_dir) / canon
+        if not target.exists():
+            try:
+                target.symlink_to(_exe)    # best on Unix
+            except (OSError, AttributeError):
+                shutil.copy2(_exe, target) # fallback on filesystems w/o symlink
+
 # Validate dependencies early and provide a helpful error message instead of
 # attempting implicit installation.  This keeps the runtime predictable and
 # avoids long network operations when a package is missing.

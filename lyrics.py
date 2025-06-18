@@ -6,14 +6,26 @@ from typing import List, Tuple
 
 import whisper  # provided by the *openai-whisper* package (pip install openai-whisper)
 
-import os, shutil
-import imageio_ffmpeg  # provides self-contained ffmpeg & ffprobe binaries
+import os, shutil, pathlib, imageio_ffmpeg  # provides self-contained binaries
 
-# Ensure the bundled ffmpeg and ffprobe executables are visible to Whisper/Demucs
-for _exe in (imageio_ffmpeg.get_ffmpeg_exe(), imageio_ffmpeg.get_ffprobe_exe()):
+for getter, canon in (
+    (imageio_ffmpeg.get_ffmpeg_exe, "ffmpeg"),
+    (getattr(imageio_ffmpeg, "get_ffprobe_exe", lambda: None), "ffprobe"),
+):
+    _exe = getter()
+    if not _exe:          # get_ffprobe_exe may be missing on old versions
+        continue
     _dir = os.path.dirname(_exe)
-    if not shutil.which(os.path.basename(_exe)):
-        os.environ["PATH"] = _dir + os.pathsep + os.environ.get("PATH", "")
+    os.environ["PATH"] = _dir + os.pathsep + os.environ.get("PATH", "")
+
+    # If the binary name isn't the canonical one, make a symlink/copy
+    if pathlib.Path(_exe).name != canon:
+        target = pathlib.Path(_dir) / canon
+        if not target.exists():
+            try:
+                target.symlink_to(_exe)    # best on Unix
+            except (OSError, AttributeError):
+                shutil.copy2(_exe, target) # fallback on filesystems w/o symlink
 
 
 def transcribe(vocal_path: str) -> List[Tuple[float, float, str, float]]:
