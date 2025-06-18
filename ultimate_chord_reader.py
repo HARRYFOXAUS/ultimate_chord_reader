@@ -13,15 +13,10 @@ from typing import List, Tuple
 # avoids long network operations when a package is missing.
 
 REQUIRED = [
-    "torch",
-    "librosa",
-    "numpy",
-    "soundfile",
-    "demucs",
-    "dora-search",
-    "treetable",
-    "imageio-ffmpeg",
-    "openai-whisper",
+    "torch", "librosa", "numpy", "soundfile",
+    "openai-whisper",           # <- correct package
+    "demucs", "dora-search", "treetable",
+    "imageio-ffmpeg",           # <- brings ffprobe for Demucs API
 ]
 
 missing: list[str] = []
