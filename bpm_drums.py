@@ -1,4 +1,8 @@
-"""Estimate BPM by tracking kicks in a Demucs-extracted drum stem (aubio version)."""
+"""Estimate BPM by tracking kicks in a Demucs-extracted drum stem.
+
+Uses Librosa beat_track (tightness = 400) + robust median filtering;
+raises RuntimeError if detection is unreliable or highly variable.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +14,7 @@ import sys
 import numpy as np
 
 import soundfile as sf
-import aubio                                   # lightweight beat-tracker
+import librosa
 
 from ultimate_chord_reader import overwrite_and_remove
 
@@ -42,61 +46,66 @@ def _separate_drums(src: str, work_dir: str) -> Path:
 
 
 # ----------------------------------------------------------------------
-# 2. Beat tracking with aubio
+# 2. Beat tracking with librosa
 # ----------------------------------------------------------------------
-def _aubio_beats(wav_path: str) -> List[float]:
-    """Return a list of beat times (seconds) detected by aubio."""
-    # --- read audio (mono float32) ------------------------------------
+def _librosa_beats(wav_path: str) -> tuple[float, list[float]]:
+    """Return estimated BPM and beat times via librosa.beat_track."""
+
     y, sr = sf.read(wav_path, dtype="float32", always_2d=False)
     if y.ndim > 1:
         y = y.mean(axis=1)
 
-    hop   = 512                     # hop-size in samples
-    win   = 1024                    # analysis window
-
-    tempo = aubio.tempo(            # default method = complexdomain
-        samplerate=sr,
-        hop_size=hop,
-        win_size=win,
+    tempo, beat_frames = librosa.beat.beat_track(
+        y=y,
+        sr=sr,
+        units="frames",
+        start_bpm=90.0,
+        tightness=400,
+        trim=False,
     )
-    tempo.set_silence(-40)          # dBFS threshold
-    tempo.set_threshold(0.3)        # onset threshold
 
-    beat_times: list[float] = []
-    for i in range(0, len(y), hop):
-        frame = y[i : i + hop]
-        if len(frame) < hop:                       # zero-pad last frame
-            frame = np.pad(frame, (0, hop - len(frame)))
-        if tempo(frame):
-            beat_times.append(float(tempo.get_last_s()))
+    beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
 
-    return beat_times
+    return float(tempo), beat_times
 
 
 # ----------------------------------------------------------------------
 # 3. Public helper – unchanged signature
 # ----------------------------------------------------------------------
 def get_bpm_from_drums(src: str) -> Tuple[float, List[float]]:
-    """
-    Extract drum stem → run aubio beat-tracker → return (bpm, beat_times).
-    If fewer than two beats are found, raises RuntimeError.
-    """
+    """Return (bpm, beat_times) from a drum stem using robust filtering."""
+
     with tempfile.TemporaryDirectory() as td:
         drum_path = _separate_drums(src, td)
 
-        beat_times = _aubio_beats(str(drum_path))
+        est_tempo, beat_times = _librosa_beats(str(drum_path))
         overwrite_and_remove(drum_path)
 
-    if len(beat_times) < 2:
-        raise RuntimeError("Insufficient beats detected")
+    if len(beat_times) < 4:
+        raise RuntimeError("Too few beats detected")
 
-    # median inter-beat-interval → BPM, then normalise to 60-160 range
-    diffs = np.diff(beat_times)
-    bpm   = 60.0 / float(np.median(diffs))
+    ibi = np.diff(beat_times)
+    med = np.median(ibi)
+    good = ibi[(ibi > 0.7 * med) & (ibi < 1.3 * med)]
+
+    if len(good) < max(3, 0.5 * len(ibi)):
+        raise RuntimeError("Inconsistent beat intervals")
+
+    bpm = 60.0 / float(np.median(good))
 
     while bpm > 160:
-        bpm /= 2.0
+        bpm /= 2
     while bpm < 60:
-        bpm *= 2.0
+        bpm *= 2
+
+    if not (0.9 * est_tempo <= bpm <= 1.1 * est_tempo):
+        raise RuntimeError(
+            f"Unreliable BPM (raw {est_tempo:.1f}, filtered {bpm:.1f})"
+        )
+
+    if __name__ == "__main__":
+        print(
+            f"[bpm_drums] beats={len(beat_times)}  raw={est_tempo:.1f}  filtered={bpm:.1f}"
+        )
 
     return bpm, beat_times
