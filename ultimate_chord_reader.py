@@ -10,6 +10,7 @@ from typing import List, Tuple
 
 import os, shutil, pathlib, imageio_ffmpeg
 import argparse, textwrap
+import math
 
 for getter, canon in (
     (imageio_ffmpeg.get_ffmpeg_exe, "ffmpeg"),
@@ -72,11 +73,15 @@ def format_chart(
     confidence: float,
 ) -> str:
     """Create a plain text chord chart."""
+    lyric_probs = [math.exp(c) for _, _, _, c in lyrics]
+    lyric_conf = (sum(lyric_probs) / len(lyric_probs) * 100) if lyric_probs else 0.0
+
     header = [
         f"Title: {title}",
         f"BPM: {bpm:.1f}",
         f"Key: {key}",
         f"Time Signature: {time_sig}",
+        f"Lyric Transcription Confidence: {lyric_conf:.1f}%",
         f"Separation Confidence: {confidence:.2f}",
         "",
     ]
