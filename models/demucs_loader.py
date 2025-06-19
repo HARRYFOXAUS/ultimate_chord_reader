@@ -45,8 +45,8 @@ def _run(cmd: list[str]) -> None:
 # ----------------------------------------------------------------------
 # Main public entry-point
 # ----------------------------------------------------------------------
-def run_demucs(input_path: str, output_dir: str) -> Tuple[Path, Path]:
-    """Return (vocal_stem, instrumental_stem) for *input_path*."""
+def run_demucs(input_path: str, output_dir: str, *, model: str = "htdemucs") -> Tuple[Path, Path]:
+    """Return (vocal_stem, instrumental_stem) for *input_path* using *model*."""
     out_root = Path(output_dir).expanduser().resolve()
     out_root.mkdir(parents=True, exist_ok=True)
 
@@ -56,24 +56,24 @@ def run_demucs(input_path: str, output_dir: str) -> Tuple[Path, Path]:
         assert apply_model and get_model and AudioFile and save_audio
 
         try:
-            model = get_model("htdemucs")
+            demucs_model = get_model(model)
             wav = AudioFile(Path(input_path)).read(          # cast to Path
                 streams=0,                                   # type: ignore[arg-type]
-                samplerate=model.samplerate,
-                channels=model.audio_channels,
+                samplerate=demucs_model.samplerate,
+                channels=demucs_model.audio_channels,
             )
             ref = wav.mean(0)
             wav = (wav - ref.mean()) / ref.std()
 
             sources = apply_model(
-                model, wav[None], split=True, overlap=0.25, progress=False
+                demucs_model, wav[None], split=True, overlap=0.25, progress=False
             )[0]
             sources = sources * ref.std() + ref.mean()
 
             stems_dir = out_root / Path(input_path).stem
             stems_dir.mkdir(exist_ok=True)
-            for source, name in zip(sources, model.sources):
-                save_audio(source, stems_dir / f"{name}.wav", model.samplerate)
+            for source, name in zip(sources, demucs_model.sources):
+                save_audio(source, stems_dir / f"{name}.wav", demucs_model.samplerate)
 
             vocal = stems_dir / "vocals.wav"
             inst = stems_dir / "no_vocals.wav"
@@ -93,6 +93,7 @@ def run_demucs(input_path: str, output_dir: str) -> Tuple[Path, Path]:
     cli_cmd = [
         sys.executable, "-m", "demucs.separate",
         "--two-stems=vocals",
+        "-n", model,
         "-o", str(out_root),
         input_path,
     ]
@@ -108,6 +109,7 @@ def run_demucs(input_path: str, output_dir: str) -> Tuple[Path, Path]:
             )
         _run([
             demucs_bin, "--two-stems=vocals",
+            "-n", model,
             "-o", str(out_root), input_path,
         ])
 

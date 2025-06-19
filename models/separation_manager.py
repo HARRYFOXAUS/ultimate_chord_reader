@@ -43,7 +43,7 @@ def separate_and_score(input_path: str, work_dir: str) -> Tuple[Path, Path, floa
     demucs_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        vocal_demucs, inst_demucs = run_demucs(input_path, str(demucs_dir))
+        vocal_demucs, inst_demucs = run_demucs(input_path, str(demucs_dir), model="htdemucs_6s")
     except (FileNotFoundError, RuntimeError) as exc:
         print(f"[Demucs] unavailable → {exc}")
         vocal_demucs = inst_demucs = None

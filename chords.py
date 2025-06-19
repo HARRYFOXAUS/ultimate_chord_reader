@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 
 import librosa
 import numpy as np
+from bpm_drums import get_bpm_from_drums
 
 NOTE_NAMES = [
     "C",
@@ -49,15 +50,20 @@ def _build_chord_templates() -> Dict[str, List[int]]:
 
 def analyze_instrumental(
     inst_path: str, sr: int = 44100
-) -> Tuple[float, str, List[Tuple[str, float, float]]]:
+) -> Tuple[float, str, List[Tuple[str, float, float]], List[float]]:
     """Analyze BPM, key, and chords from an instrumental stem."""
-    y, sr = librosa.load(inst_path, sr=sr)
-    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-    # fold extremes into a sensible 60-160 bpm range
-    while tempo > 160:
-        tempo /= 2.0
-    while tempo < 60:
-        tempo *= 2.0
+
+    try:
+        tempo, beat_times = get_bpm_from_drums(inst_path)
+        y, sr = librosa.load(inst_path, sr=sr)
+    except Exception:
+        y, sr = librosa.load(inst_path, sr=sr)
+        tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
+        beat_times = librosa.frames_to_time(beats, sr=sr).tolist()
+        while tempo > 160:
+            tempo /= 2.0
+        while tempo < 60:
+            tempo *= 2.0
 
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
     key = librosa.feature.chroma_stft(y=y, sr=sr).mean(axis=1)
@@ -85,4 +91,5 @@ def analyze_instrumental(
             time = float(librosa.frames_to_time(i, sr=sr))
             chords.append((best, time, best_score))
 
-    return tempo, est_key, chords
+    return tempo, est_key, chords, beat_times
+
