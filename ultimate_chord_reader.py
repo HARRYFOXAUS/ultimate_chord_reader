@@ -141,7 +141,7 @@ def process_file(path: str) -> Path:
 
         import numpy as np
         if isinstance(bpm, np.ndarray):
-        bpm = float(bpm.squeeze())
+            bpm = float(bpm.squeeze())
 
 
         title = Path(path).stem
