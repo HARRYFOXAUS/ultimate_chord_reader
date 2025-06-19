@@ -131,23 +131,30 @@ def format_chart(
     total_bars = math.ceil(last_time / bar_len)
 
     chart_lines: list[str] = []
-    chord_idx = 0                         # rolling pointer into `chords`
+    chord_idx = 0  # rolling pointer into chords list (sorted by time)
+
+    # pre-group lyrics by bar with a small grace window
+    grace = 0.25
+    lyrics_by_bar: dict[int, list[str]] = {}
+    for s, _e, txt, _c in lyrics:
+        bar_num = int((s + grace) // bar_len)
+        lyrics_by_bar.setdefault(bar_num, []).append(txt)
 
     for bar in range(total_bars):
         bar_start = bar * bar_len
         bar_end   = bar_start + bar_len
 
-        # ── merge all lyric fragments starting in this bar ────────────
-        merged_lyric = " ".join(
-            txt for (s, _e, txt, _c) in lyrics if bar_start <= s < bar_end
-        ).strip()
+        # collect lyric fragments mapped to this bar
+        lyr_texts = lyrics_by_bar.get(bar, [])
+        merged_lyric = " ".join(lyr_texts).strip()
 
         # ── collect chords that sound during this bar ─────────────────
         chords_in_bar: list[str] = []
 
-        # chord already ringing at bar_start?
-        if chord_idx and chords[chord_idx - 1][1] < bar_start:
-            chords_in_bar.append(chords[chord_idx - 1][0])
+        carry_over = None
+        if chord_idx and chords[chord_idx-1][1] < bar_start:
+            carry_over = chords[chord_idx-1][0]
+            chords_in_bar.append(carry_over)
 
         j = chord_idx
         while j < len(chords) and chords[j][1] < bar_end:
@@ -156,11 +163,18 @@ def format_chart(
                 chords_in_bar.append(name)
             j += 1
 
-        chord_idx = j                    # advance master pointer
-        chords_in_bar = chords_in_bar[:4]  # show ≤ 4 per bar
+        # hide carry-over chord if nothing actually changes in this bar
+        if carry_over and len(chords_in_bar) == 1 and j == chord_idx:
+            chords_in_bar.clear()
+
+        chord_idx = j
 
         chord_text = " ".join(chords_in_bar)
-        chart_lines.append(f"{chord_text}\t{merged_lyric}".rstrip())
+
+        if chord_text or merged_lyric:
+            chart_lines.append(f"{chord_text}\t{merged_lyric}".rstrip())
+        else:
+            chart_lines.append("")
 
     return "\n".join(header + chart_lines)
 
@@ -173,7 +187,7 @@ def process_file(path: str) -> Path:
     from chords import analyze_instrumental
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        vocal, inst, conf = separate_and_score(path, tmpdir)
+        vocal, inst, _ = separate_and_score(path, tmpdir)
         lyric_lines = transcribe(str(vocal), tmpdir)
         bpm, key, chord_seq = analyze_instrumental(str(inst))
 
@@ -182,8 +196,22 @@ def process_file(path: str) -> Path:
             bpm = float(bpm.squeeze())
 
 
+        # compute average Whisper confidence in percent
+        if lyric_lines:
+            avg_conf = sum(math.exp(c) for *_txt, c in lyric_lines) / len(lyric_lines) * 100.0
+        else:
+            avg_conf = 0.0
+
         title = Path(path).stem
-        chart = format_chart(title, bpm, key, TIME_SIGNATURE, lyric_lines, chord_seq, conf)
+        chart = format_chart(
+            title,
+            bpm,
+            key,
+            TIME_SIGNATURE,
+            lyric_lines,
+            chord_seq,
+            avg_conf,
+        )
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         out_path = OUTPUT_DIR / f"{title}_chart.txt"
