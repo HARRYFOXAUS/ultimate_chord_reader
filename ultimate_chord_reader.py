@@ -139,6 +139,11 @@ def process_file(path: str) -> Path:
         lyric_lines = transcribe(str(vocal), tmpdir)
         bpm, key, chord_seq = analyze_instrumental(str(inst))
 
+        import numpy as np
+        if isinstance(bpm, np.ndarray):
+        bpm = float(bpm.squeeze())
+
+
         title = Path(path).stem
         chart = format_chart(title, bpm, key, TIME_SIGNATURE, lyric_lines, chord_seq, conf)
 
