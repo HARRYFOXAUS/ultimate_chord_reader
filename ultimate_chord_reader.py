@@ -95,16 +95,18 @@ def format_chart(
 ) -> str:
     """
     Build a plain-text chart with **exactly one line per bar**.
-    - Lyrics starting in the same bar are merged.
-    - All bars (even silent ones) are represented.
-    - Multiple chords in a bar are listed in time order.
-    """
-    import math
-    import numpy as np
 
-    # ── header ──────────────────────────────────────────────────────────
+    • Lyrics whose **start-time** lies in the same bar are merged.  
+    • All bars (even silent ones) are represented.  
+    • Only the first few chord changes that happen inside a bar are shown
+      (ongoing chord + up-to-three new changes).  This prevents the
+      “wall-of-chords” overflow.
+    """
+    import math, numpy as np
+
     if isinstance(bpm, np.ndarray):
         bpm = float(bpm.squeeze())
+
     header = [
         "ULTIMATE CHORD READER uses automated stem separation and AI analysis.",
         "All audio files and stems are automatically deleted immediately after processing.",
@@ -118,41 +120,35 @@ def format_chart(
         "",
     ]
 
-    # ── bar length ──────────────────────────────────────────────────────
     beats_per_bar = int(time_sig.split("/")[0]) if "/" in time_sig else 4
-    beat_len = 60.0 / bpm          # seconds per beat
-    bar_len  = beats_per_bar * beat_len
+    bar_len       = (60.0 / bpm) * beats_per_bar
 
-    # ── find how many bars we need ──────────────────────────────────────
-    last_time = 0.0
+    last_time  = 0.0
     if lyrics:
-        last_time = max(last_time, max(seg[1] for seg in lyrics))  # lyric end
+        last_time = max(last_time, max(e for _s, e, _t, _ in lyrics))
     if chords:
-        last_time = max(last_time, chords[-1][1])                  # last chord
+        last_time = max(last_time, chords[-1][1])
     total_bars = math.ceil(last_time / bar_len)
 
-    # ── main loop: one pass per bar ─────────────────────────────────────
     chart_lines: list[str] = []
-    chord_idx = 0  # rolling pointer into chords list (sorted by time)
+    chord_idx = 0                         # rolling pointer into `chords`
+
     for bar in range(total_bars):
         bar_start = bar * bar_len
         bar_end   = bar_start + bar_len
 
-        # gather lyric segments whose *start* is in this bar
-        lyr_texts = [
-            txt for (s, _e, txt, _conf) in lyrics
-            if bar_start <= s < bar_end
-        ]
-        merged_lyric = " ".join(lyr_texts).strip()
+        # ── merge all lyric fragments starting in this bar ────────────
+        merged_lyric = " ".join(
+            txt for (s, _e, txt, _c) in lyrics if bar_start <= s < bar_end
+        ).strip()
 
-        # gather chords active / changing in this bar
+        # ── collect chords that sound during this bar ─────────────────
         chords_in_bar: list[str] = []
 
-        # include any chord that was already playing at bar_start
-        if chord_idx and chords[chord_idx-1][1] < bar_start:
-            chords_in_bar.append(chords[chord_idx-1][0])
+        # chord already ringing at bar_start?
+        if chord_idx and chords[chord_idx - 1][1] < bar_start:
+            chords_in_bar.append(chords[chord_idx - 1][0])
 
-        # walk forward while the chord change time is inside the bar
         j = chord_idx
         while j < len(chords) and chords[j][1] < bar_end:
             name = chords[j][0]
@@ -160,18 +156,14 @@ def format_chart(
                 chords_in_bar.append(name)
             j += 1
 
-        chord_idx = j  # advance pointer to next unseen chord
+        chord_idx = j                    # advance master pointer
+        chords_in_bar = chords_in_bar[:4]  # show ≤ 4 per bar
 
         chord_text = " ".join(chords_in_bar)
+        chart_lines.append(f"{chord_text}\t{merged_lyric}".rstrip())
 
-        # build the line (empty string for silent bar)
-        if chord_text or merged_lyric:
-            chart_lines.append(f"{chord_text}\t{merged_lyric}".rstrip())
-        else:
-            chart_lines.append("")  # placeholder for empty bar
-
-    # ── return final chart ──────────────────────────────────────────────
     return "\n".join(header + chart_lines)
+
 
 
 def process_file(path: str) -> Path:
