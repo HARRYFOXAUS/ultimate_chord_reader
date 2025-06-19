@@ -91,7 +91,8 @@ def format_chart(
     for start, end, line, conf in lyrics:
         bar = int(start / bar_len)
         if bar != current_bar:
-            chart_lines.append("|")
+            if chart_lines:
+                chart_lines.append("")
             current_bar = bar
         while chord_idx < len(chords) and chords[chord_idx][1] <= start:
             chord_idx += 1
