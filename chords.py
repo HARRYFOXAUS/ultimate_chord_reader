@@ -53,6 +53,11 @@ def analyze_instrumental(
     """Analyze BPM, key, and chords from an instrumental stem."""
     y, sr = librosa.load(inst_path, sr=sr)
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    # fold extremes into a sensible 60-160 bpm range
+    while tempo > 160:
+        tempo /= 2.0
+    while tempo < 60:
+        tempo *= 2.0
 
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
     key = librosa.feature.chroma_stft(y=y, sr=sr).mean(axis=1)

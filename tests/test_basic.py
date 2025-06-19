@@ -34,6 +34,29 @@ def test_format_chart_basic(tmp_path):
     assert lines[-1] == 'C G\thello world'
 
 
+def test_carryover_hidden(tmp_path):
+    lyrics = [
+        (0.0, 1.0, 'foo', 0.9),
+        (5.0, 6.0, 'bar', 0.9),
+    ]
+    chords = [
+        ('C', 0.0, 0.9),
+    ]
+    text = ucr.format_chart(
+        title='Test',
+        bpm=60.0,
+        key='C',
+        time_sig='4/4',
+        lyrics=lyrics,
+        chords=chords,
+        confidence=80.0,
+    )
+    lines = text.splitlines()
+    # last two bars: first shows chord, second hides carry over
+    assert lines[-2] == 'C\tfoo'
+    assert lines[-1] == '\tbar'
+
+
 def test_overwrite_and_remove(tmp_path):
     f = tmp_path / 'sample.txt'
     f.write_text('data')
