@@ -153,11 +153,14 @@ def format_chart(
             chords_in_bar.append(chords[chord_idx-1][0])
 
         # walk forward while the chord change time is inside the bar
-        while chord_idx < len(chords) and chords[chord_idx][1] < bar_end:
-            name = chords[chord_idx][0]
+        j = chord_idx
+        while j < len(chords) and chords[j][1] < bar_end:
+            name = chords[j][0]
             if not chords_in_bar or name != chords_in_bar[-1]:
                 chords_in_bar.append(name)
-            chord_idx += 1
+            j += 1
+
+        chord_idx = j  # advance pointer to next unseen chord
 
         chord_text = " ".join(chords_in_bar)
 
