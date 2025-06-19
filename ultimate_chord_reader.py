@@ -40,6 +40,7 @@ REQUIRED = [
     "openai-whisper",           # <- correct package
     "demucs", "dora-search", "treetable",
     "imageio-ffmpeg",           # <- brings ffprobe for Demucs API
+    "pyspellchecker",
 ]
 
 missing: list[str] = []
