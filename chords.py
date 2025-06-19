@@ -2,10 +2,49 @@
 
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import librosa
 import numpy as np
+
+NOTE_NAMES = [
+    "C",
+    "C#",
+    "D",
+    "D#",
+    "E",
+    "F",
+    "F#",
+    "G",
+    "G#",
+    "A",
+    "A#",
+    "B",
+]
+
+CHORD_INTERVALS: Dict[str, List[int]] = {
+    "": [0, 4, 7],  # major triad
+    "m": [0, 3, 7],  # minor triad
+    "6": [0, 4, 7, 9],  # major sixth
+    "maj7": [0, 4, 7, 11],  # major seventh
+    "7": [0, 4, 7, 10],  # dominant seventh
+    "m7": [0, 3, 7, 10],  # minor seventh
+    "maj9": [0, 4, 7, 11, 2],  # major ninth
+    "9": [0, 4, 7, 10, 2],  # dominant ninth
+    "m9": [0, 3, 7, 10, 2],  # minor ninth
+}
+
+
+def _build_chord_templates() -> Dict[str, List[int]]:
+    """Generate chroma templates for common chord types."""
+    templates: Dict[str, List[int]] = {}
+    for root_idx, name in enumerate(NOTE_NAMES):
+        for suffix, steps in CHORD_INTERVALS.items():
+            vec = [0] * 12
+            for step in steps:
+                vec[(root_idx + step) % 12] = 1
+            templates[name + suffix] = vec
+    return templates
 
 
 def analyze_instrumental(
@@ -21,11 +60,7 @@ def analyze_instrumental(
     keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     est_key = keys[key_idx % 12]
 
-    chord_templates = {
-        "C": [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
-        "G": [0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1],
-        # TODO: expand chord templates
-    }
+    chord_templates = _build_chord_templates()
 
     chords: List[Tuple[str, float, float]] = []
     for i in range(chroma.shape[1]):
