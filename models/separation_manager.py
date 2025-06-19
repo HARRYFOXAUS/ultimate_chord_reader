@@ -9,7 +9,7 @@ Flow
 from __future__ import annotations
 
 import shutil
-import tempfile
+import os
 from pathlib import Path
 from typing import Tuple
 
@@ -18,6 +18,9 @@ import soundfile as sf
 
 from .mvsep_loader import run_uvr
 from .demucs_loader import run_demucs
+
+os.environ.setdefault("TORCH_HOME", "/tmp")
+os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
 
 
 def _rms(path: Path) -> float:
@@ -32,9 +35,12 @@ def _similarity(inst1: Path, inst2: Path) -> float:
     return 1.0 - abs(rms1 - rms2) / max(rms1, rms2, 1e-6)
 
 
-def separate_and_score(input_path: str) -> Tuple[Path, Path, float]:
-    tempdir = Path(tempfile.mkdtemp())
+def separate_and_score(input_path: str, work_dir: str) -> Tuple[Path, Path, float]:
+    """Separate the given track into vocals/instrumental using a temporary folder."""
+    tempdir = Path(work_dir)
     uvr_dir, demucs_dir = tempdir / "uvr", tempdir / "demucs"
+    uvr_dir.mkdir(parents=True, exist_ok=True)
+    demucs_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         vocal_demucs, inst_demucs = run_demucs(input_path, str(demucs_dir))
@@ -64,7 +70,7 @@ def separate_and_score(input_path: str) -> Tuple[Path, Path, float]:
             chosen_v, chosen_i = vocal_demucs, inst_demucs
         conf = float(score)
 
-    # Move selected stems to a stable folder
+    # Move selected stems to a stable folder within work_dir
     final_dir = tempdir / "final"
     final_dir.mkdir(parents=True, exist_ok=True)
     final_v, final_i = final_dir / "vocals.wav", final_dir / "instrumental.wav"
