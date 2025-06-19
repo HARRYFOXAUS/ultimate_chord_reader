@@ -1,4 +1,4 @@
-"""Estimate BPM by tracking kicks in a Demucs-extracted drum stem (aubio version)."""
+"""Estimate BPM by tracking kicks in a Demucs-extracted drum stem (Librosa version)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,7 @@ import subprocess
 import sys
 import numpy as np
 
-import soundfile as sf
-import aubio                                   # lightweight beat-tracker
+import librosa
 
 from ultimate_chord_reader import overwrite_and_remove
 
@@ -42,35 +41,34 @@ def _separate_drums(src: str, work_dir: str) -> Path:
 
 
 # ----------------------------------------------------------------------
-# 2. Beat tracking with aubio
+# 2. Beat tracking with Librosa
 # ----------------------------------------------------------------------
-def _aubio_beats(wav_path: str) -> List[float]:
-    """Return a list of beat times (seconds) detected by aubio."""
-    # --- read audio (mono float32) ------------------------------------
-    y, sr = sf.read(wav_path, dtype="float32", always_2d=False)
-    if y.ndim > 1:
-        y = y.mean(axis=1)
+def _librosa_beats(wav_path: str) -> list[float]:
+    """
+    Return beat times (in seconds) detected by Librosa on a *mono* drum stem.
 
-    hop   = 512                     # hop-size in samples
-    win   = 1024                    # analysis window
+    Steps
+    -----
+    1.  y, sr = librosa.load(wav_path, sr=44100, mono=True)
+    2.  tempo, beat_frames = librosa.beat.beat_track(
+            y=y,
+            sr=sr,
+            units="frames",
+            start_bpm=90.0,      # good initial guess
+            tightness=100,       # favour consistent tempo
+        )
+    3.  return librosa.frames_to_time(beat_frames, sr=sr).tolist()
+    """
 
-    tempo = aubio.tempo(            # default method = complexdomain
-        samplerate=sr,
-        hop_size=hop,
-        win_size=win,
+    y, sr = librosa.load(wav_path, sr=44100, mono=True)
+    _, beat_frames = librosa.beat.beat_track(
+        y=y,
+        sr=sr,
+        units="frames",
+        start_bpm=90.0,
+        tightness=100,
     )
-    tempo.set_silence(-40)          # dBFS threshold
-    tempo.set_threshold(0.3)        # onset threshold
-
-    beat_times: list[float] = []
-    for i in range(0, len(y), hop):
-        frame = y[i : i + hop]
-        if len(frame) < hop:                       # zero-pad last frame
-            frame = np.pad(frame, (0, hop - len(frame)))
-        if tempo(frame):
-            beat_times.append(float(tempo.get_last_s()))
-
-    return beat_times
+    return librosa.frames_to_time(beat_frames, sr=sr).tolist()
 
 
 # ----------------------------------------------------------------------
@@ -78,13 +76,13 @@ def _aubio_beats(wav_path: str) -> List[float]:
 # ----------------------------------------------------------------------
 def get_bpm_from_drums(src: str) -> Tuple[float, List[float]]:
     """
-    Extract drum stem → run aubio beat-tracker → return (bpm, beat_times).
+    Extract drum stem → run Librosa beat-tracker → return (bpm, beat_times).
     If fewer than two beats are found, raises RuntimeError.
     """
     with tempfile.TemporaryDirectory() as td:
         drum_path = _separate_drums(src, td)
 
-        beat_times = _aubio_beats(str(drum_path))
+        beat_times = _librosa_beats(str(drum_path))
         overwrite_and_remove(drum_path)
 
     if len(beat_times) < 2:
