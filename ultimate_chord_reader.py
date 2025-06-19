@@ -2,78 +2,99 @@
 
 from __future__ import annotations
 
+import argparse
+import math
+import os
+import pathlib
+import shutil
 import subprocess
 import sys
+import tempfile
+import textwrap
 from pathlib import Path
-from typing import List, Tuple
 
-import os, shutil, pathlib, imageio_ffmpeg, tempfile
+import imageio_ffmpeg  # brings self‑contained ffmpeg & ffprobe
 
+# ---------------------------------------------------------------------------
+# Environment defaults: keep large model caches off the repo filesystem
+# ---------------------------------------------------------------------------
 os.environ.setdefault("TORCH_HOME", "/tmp")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
-import argparse, textwrap
-import math
 
+# ---------------------------------------------------------------------------
+# Ensure the bundled ffmpeg/ffprobe executables are visible to Whisper/Demucs
+# ---------------------------------------------------------------------------
 for getter, canon in (
     (imageio_ffmpeg.get_ffmpeg_exe, "ffmpeg"),
     (getattr(imageio_ffmpeg, "get_ffprobe_exe", lambda: None), "ffprobe"),
 ):
     _exe = getter()
-    if not _exe:          # get_ffprobe_exe may be missing on old versions
+    if not _exe:  # get_ffprobe_exe may be missing on very old versions
         continue
     _dir = os.path.dirname(_exe)
     os.environ["PATH"] = _dir + os.pathsep + os.environ.get("PATH", "")
 
-    # If the binary name isn't the canonical one, make a symlink/copy
+    # On some platforms imageio-ffmpeg supplies "ffmpeg-imageio" → symlink it
     if pathlib.Path(_exe).name != canon:
         target = pathlib.Path(_dir) / canon
         if not target.exists():
             try:
-                target.symlink_to(_exe)    # best on Unix
+                target.symlink_to(_exe)  # Unix‑like
             except (OSError, AttributeError):
-                shutil.copy2(_exe, target) # fallback on filesystems w/o symlink
+                shutil.copy2(_exe, target)  # Fallback on FS w/o symlink support
 
-# Validate dependencies early and provide a helpful error message instead of
-# attempting implicit installation.  This keeps the runtime predictable and
-# avoids long network operations when a package is missing.
-
+# ---------------------------------------------------------------------------
+# Hard dependencies – we fail fast with a helpful msg if any are missing
+# ---------------------------------------------------------------------------
 REQUIRED = [
-    "torch", "librosa", "numpy", "soundfile",
-    "openai-whisper",           # <- correct package
-    "demucs", "dora-search", "treetable",
-    "imageio-ffmpeg",           # <- brings ffprobe for Demucs API
+    "torch",
+    "librosa",
+    "numpy",
+    "soundfile",
+    "openai-whisper",  # correct Whisper package
+    "demucs",
+    "dora-search",
+    "treetable",
+    "imageio-ffmpeg",
     "pyspellchecker",
 ]
 
-missing: list[str] = []
+_missing: list[str] = []
 for _pkg in REQUIRED:
     try:
         __import__(_pkg)
-    except Exception:  # pragma: no cover - import failure path
-        missing.append(_pkg)
+    except Exception:  # pragma: no cover – import failure path
+        _missing.append(_pkg)
+
 
 def ensure_dependencies() -> None:
-    """Install any missing dependencies using pip."""
-    if not missing:
+    """Install any missing dependencies using pip (rare in dev, handy for CI)."""
+    if not _missing:
         return
-    print(f"Installing missing packages: {', '.join(missing)}")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
+    print("Installing missing packages:", ", ".join(_missing))
+    subprocess.check_call([sys.executable, "-m", "pip", "install", *_missing])
 
 
-# User configuration
+# ---------------------------------------------------------------------------
+# User‑tweakable settings
+# ---------------------------------------------------------------------------
 INPUT_DIR = Path("input_songs")
 OUTPUT_DIR = Path("output_charts")
-TIME_SIGNATURE = "4/4"  # default time signature
+TIME_SIGNATURE = "4/4"  # default TS until we add an onset‑detector later
+MAX_CHANGES_PER_BAR = 3  # show at most N NEW chord names inside a single bar
 
 DISCLAIMER = (
     "ULTIMATE CHORD READER uses automated stem separation and AI analysis.\n"
     "All audio files and stems are automatically deleted immediately after processing.\n"
-    "Results are best-effort guesses; verify before public use.\n"
+    "Results are best‑effort guesses; verify before public use.\n"
 )
 
+# ---------------------------------------------------------------------------
+# Helpers: secure delete (best‑effort) & chart formatter
+# ---------------------------------------------------------------------------
 
 def overwrite_and_remove(path: Path) -> None:
-    """Overwrite a file with zeros and unlink it."""
+    """Overwrite a file with zeros and unlink it (best‑effort secure delete)."""
     if not path.exists():
         return
     try:
@@ -91,97 +112,95 @@ def format_chart(
     time_sig: str,
     lyrics: list[tuple[float, float, str, float]],
     chords: list[tuple[str, float, float]],
-    confidence: float,
+    avg_conf: float,
 ) -> str:
-    """
-    Build a plain-text chart with **exactly one line per bar**.
+    """Return a human‑readable text chart – **exactly one line per bar**.
 
-    • Lyrics whose **start-time** lies in the same bar are merged.  
-    • All bars (even silent ones) are represented.  
-    • Only the first few chord changes that happen inside a bar are shown
-      (ongoing chord + up-to-three new changes).  This prevents the
-      “wall-of-chords” overflow.
+    * Lyrics whose *start* lies in the same bar are merged (0.25 s grace).
+    * Every bar appears (empty line if nothing happens).
+    * At most `MAX_CHANGES_PER_BAR` fresh chord changes per bar are displayed –
+      continuing chords are omitted to avoid the “wall‑of‑chords”.
     """
-    import math, numpy as np
+    import numpy as np
 
     if isinstance(bpm, np.ndarray):
         bpm = float(bpm.squeeze())
 
+    beats_per_bar = int(time_sig.split("/")[0]) if "/" in time_sig else 4
+    bar_len = (60.0 / bpm) * beats_per_bar
+
+    # ── header ────────────────────────────────────────────────────────────
     header = [
-        "ULTIMATE CHORD READER uses automated stem separation and AI analysis.",
-        "All audio files and stems are automatically deleted immediately after processing.",
-        "Results are best-effort guesses; verify before public use.",
+        DISCLAIMER.rstrip(),
         "",
         f"Title: {title}",
         f"BPM: {bpm:.1f}",
         f"Key: {key}",
         f"Time Signature: {time_sig}",
-        f"Lyric Transcription Confidence: {confidence:.1f}%",
+        f"Lyric Transcription Confidence: {avg_conf:.1f}%",
         "",
     ]
 
-    beats_per_bar = int(time_sig.split("/")[0]) if "/" in time_sig else 4
-    bar_len       = (60.0 / bpm) * beats_per_bar
-
-    last_time  = 0.0
+    # ── total length in bars ─────────────────────────────────────────────
+    last_time = 0.0
     if lyrics:
         last_time = max(last_time, max(e for _s, e, _t, _ in lyrics))
     if chords:
         last_time = max(last_time, chords[-1][1])
     total_bars = math.ceil(last_time / bar_len)
 
-    chart_lines: list[str] = []
-    chord_idx = 0  # rolling pointer into chords list (sorted by time)
-
-    # pre-group lyrics by bar with a small grace window
+    # pre‑index lyric segs by bar (with 0.25 s grace so near‑boundary words join)
     grace = 0.25
     lyrics_by_bar: dict[int, list[str]] = {}
     for s, _e, txt, _c in lyrics:
         bar_num = int((s + grace) // bar_len)
         lyrics_by_bar.setdefault(bar_num, []).append(txt)
 
+    chart_lines: list[str] = []
+    chord_idx = 0  # running index into *sorted* chord list
+
     for bar in range(total_bars):
         bar_start = bar * bar_len
-        bar_end   = bar_start + bar_len
+        bar_end = bar_start + bar_len
 
-        # collect lyric fragments mapped to this bar
-        lyr_texts = lyrics_by_bar.get(bar, [])
-        merged_lyric = " ".join(lyr_texts).strip()
+        # ── lyrics ────────────────────────────────────────────────────
+        merged_lyric = " ".join(lyrics_by_bar.get(bar, [])).strip()
 
-        # ── collect chords that sound during this bar ─────────────────
+        # ── chords ────────────────────────────────────────────────────
         chords_in_bar: list[str] = []
 
+        # 1) chord already sounding at bar start
         carry_over = None
-        if chord_idx and chords[chord_idx-1][1] < bar_start:
-            carry_over = chords[chord_idx-1][0]
+        if chord_idx and chords[chord_idx - 1][1] < bar_start:
+            carry_over = chords[chord_idx - 1][0]
             chords_in_bar.append(carry_over)
 
+        # 2) new changes inside the bar (capped)
         j = chord_idx
         while j < len(chords) and chords[j][1] < bar_end:
             name = chords[j][0]
-            if not chords_in_bar or name != chords_in_bar[-1]:
+            if (not chords_in_bar or name != chords_in_bar[-1]) and \
+               len(chords_in_bar) < 1 + MAX_CHANGES_PER_BAR:
                 chords_in_bar.append(name)
             j += 1
-
-        # hide carry-over chord if nothing actually changes in this bar
-        if carry_over and len(chords_in_bar) == 1 and j == chord_idx:
-            chords_in_bar.clear()
-
         chord_idx = j
 
-        chord_text = " ".join(chords_in_bar)
+        # hide carry‑over if absolutely nothing new happened
+        if carry_over and len(chords_in_bar) == 1:
+            chords_in_bar.clear()
 
-        if chord_text or merged_lyric:
-            chart_lines.append(f"{chord_text}\t{merged_lyric}".rstrip())
-        else:
-            chart_lines.append("")
+        chord_text = " ".join(chords_in_bar)
+        line = f"{chord_text}\t{merged_lyric}".rstrip()
+        chart_lines.append(line)
 
     return "\n".join(header + chart_lines)
 
-
+# ---------------------------------------------------------------------------
+# Main pipeline: separation → transcription → chord analyse → chart
+# ---------------------------------------------------------------------------
 
 def process_file(path: str) -> Path:
-    """Process a single audio file and output chord chart path."""
+    """Run full pipeline on *path*.  Returns the saved chart path."""
     from models.separation_manager import separate_and_score
     from lyrics import transcribe
     from chords import analyze_instrumental
@@ -191,96 +210,79 @@ def process_file(path: str) -> Path:
         lyric_lines = transcribe(str(vocal), tmpdir)
         bpm, key, chord_seq = analyze_instrumental(str(inst))
 
-        import numpy as np
-        if isinstance(bpm, np.ndarray):
-            bpm = float(bpm.squeeze())
-
-
-        # compute average Whisper confidence in percent
+        # average Whisper confidence – log‑probabilities → probabilities → %
         if lyric_lines:
-            avg_conf = sum(math.exp(c) for *_txt, c in lyric_lines) / len(lyric_lines) * 100.0
+            avg_conf = (sum(math.exp(conf) for *_rest, conf in lyric_lines)
+                        / len(lyric_lines)) * 100.0
         else:
             avg_conf = 0.0
 
         title = Path(path).stem
-        chart = format_chart(
-            title,
-            bpm,
-            key,
-            TIME_SIGNATURE,
-            lyric_lines,
-            chord_seq,
-            avg_conf,
-        )
+        chart = format_chart(title, bpm, key, TIME_SIGNATURE,
+                             lyric_lines, chord_seq, avg_conf)
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         out_path = OUTPUT_DIR / f"{title}_chart.txt"
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(chart)
+        out_path.write_text(chart, encoding="utf‑8")
 
+        # secure‑delete stems ASAP
         overwrite_and_remove(vocal)
         overwrite_and_remove(inst)
 
         return out_path
 
-
-# TODO: Web GUI hook
-# TODO: Cloud model hook
-# TODO: Feedback loop for self-training
-
+# ---------------------------------------------------------------------------
+# CLI wrapper
+# ---------------------------------------------------------------------------
 
 def main() -> None:
     ensure_dependencies()
 
     audio_exts = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}
-    files      = sorted(p for p in INPUT_DIR.iterdir()
-                        if p.is_file() and p.suffix.lower() in audio_exts)
-
+    files = sorted(p for p in INPUT_DIR.iterdir()
+                   if p.is_file() and p.suffix.lower() in audio_exts)
     if not files:
         print("No audio files found in", INPUT_DIR)
         return
 
-    # -------- argparse: accept --all or explicit file paths ----------
+    # ── argparse -------------------------------------------------------
     parser = argparse.ArgumentParser(
-        description="Ultimate Chord Reader – select which songs to analyse",
+        description="Ultimate Chord Reader – choose which tracks to analyse",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=textwrap.dedent("""\
-            If you run without arguments, you'll be asked to confirm each track.
+        epilog=textwrap.dedent("""
+            If you run without arguments you'll be prompted for each file.
             Examples:
               python ultimate_chord_reader.py --all
-              python ultimate_chord_reader.py \"my song.mp3\" \"other.wav\"
+              python ultimate_chord_reader.py "my song.mp3" "other.wav"
         """),
     )
     parser.add_argument("tracks", nargs="*", metavar="TRACK",
                         help="one or more filenames in input_songs/")
     parser.add_argument("--all", action="store_true",
                         help="process every file in input_songs/")
-
     args = parser.parse_args()
 
-    # 1) explicit list or --all  → skip menu
+    # explicit list or --all  → skip menu
     if args.all:
         selection = files
     elif args.tracks:
         wanted = set(args.tracks)
         selection = [p for p in files if p.name in wanted]
-        missing   = wanted - {p.name for p in selection}
-        if missing:
-            print("Not found in input_songs/:", *missing, sep="\n  • ")
+        not_found = wanted - {p.name for p in selection}
+        if not_found:
+            print("Not found in input_songs/:", *not_found, sep="\n  • ")
             return
-    # 2) no args  → interactive yes/no prompt
     else:
+        # interactive picker
         print("Found the following tracks in", INPUT_DIR)
         for f in files:
             print("  •", f.name)
-        choice = input("Select all? [y/N]: ").strip().lower()
-        if choice.startswith("y"):
+        if input("Select all? [y/N]: ").strip().lower().startswith("y"):
             selection = files
         else:
             selection = []
             for f in files:
-                ans = input(f"Process '{f.name}'? [y/N]: ").strip().lower()
-                if ans.startswith("y"):
+                if input(f"Process '{f.name}'? [y/N]: ").strip().lower().startswith("y"):
                     selection.append(f)
 
     if not selection:
@@ -292,10 +294,10 @@ def main() -> None:
         print(f"\nProcessing {file}")
         try:
             out = process_file(str(file))
-            print(f"Saved chart to {out}")
+            print("Saved chart to", out)
         except Exception as exc:
             print("⚠️  Failed on", file.name, "-", exc)
 
 
-if __name__ == "__main__":  # pragma: no cover - CLI entry point
+if __name__ == "__main__":  # pragma: no cover – CLI entry point
     main()
