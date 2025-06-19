@@ -89,42 +89,85 @@ def format_chart(
     bpm: float,
     key: str,
     time_sig: str,
-    lyrics: List[Tuple[float, float, str, float]],
-    chords: List[Tuple[str, float, float]],
+    lyrics: list[tuple[float, float, str, float]],
+    chords: list[tuple[str, float, float]],
     confidence: float,
 ) -> str:
-    """Create a plain text chord chart."""
-    lyric_probs = [math.exp(c) for _, _, _, c in lyrics]
-    lyric_conf = (sum(lyric_probs) / len(lyric_probs) * 100) if lyric_probs else 0.0
+    """
+    Build a plain-text chart with **exactly one line per bar**.
+    - Lyrics starting in the same bar are merged.
+    - All bars (even silent ones) are represented.
+    - Multiple chords in a bar are listed in time order.
+    """
+    import math
+    import numpy as np
 
-    header = list(DISCLAIMER.splitlines()) + [
+    # ── header ──────────────────────────────────────────────────────────
+    if isinstance(bpm, np.ndarray):
+        bpm = float(bpm.squeeze())
+    header = [
+        "ULTIMATE CHORD READER uses automated stem separation and AI analysis.",
+        "All audio files and stems are automatically deleted immediately after processing.",
+        "Results are best-effort guesses; verify before public use.",
+        "",
         f"Title: {title}",
         f"BPM: {bpm:.1f}",
         f"Key: {key}",
         f"Time Signature: {time_sig}",
-        f"Lyric Transcription Confidence: {lyric_conf:.1f}%",
-        f"Separation Confidence: {confidence:.2f}",
+        f"Lyric Transcription Confidence: {confidence:.1f}%",
         "",
     ]
 
+    # ── bar length ──────────────────────────────────────────────────────
     beats_per_bar = int(time_sig.split("/")[0]) if "/" in time_sig else 4
-    beat_len = 60.0 / bpm
-    bar_len = beats_per_bar * beat_len
+    beat_len = 60.0 / bpm          # seconds per beat
+    bar_len  = beats_per_bar * beat_len
 
-    chart_lines = []
-    chord_idx = 0
-    current_bar = -1
-    for start, end, line, conf in lyrics:
-        bar = int(start / bar_len)
-        if bar != current_bar:
-            if chart_lines:
-                chart_lines.append("")
-            current_bar = bar
-        while chord_idx < len(chords) and chords[chord_idx][1] <= start:
+    # ── find how many bars we need ──────────────────────────────────────
+    last_time = 0.0
+    if lyrics:
+        last_time = max(last_time, max(seg[1] for seg in lyrics))  # lyric end
+    if chords:
+        last_time = max(last_time, chords[-1][1])                  # last chord
+    total_bars = math.ceil(last_time / bar_len)
+
+    # ── main loop: one pass per bar ─────────────────────────────────────
+    chart_lines: list[str] = []
+    chord_idx = 0  # rolling pointer into chords list (sorted by time)
+    for bar in range(total_bars):
+        bar_start = bar * bar_len
+        bar_end   = bar_start + bar_len
+
+        # gather lyric segments whose *start* is in this bar
+        lyr_texts = [
+            txt for (s, _e, txt, _conf) in lyrics
+            if bar_start <= s < bar_end
+        ]
+        merged_lyric = " ".join(lyr_texts).strip()
+
+        # gather chords active / changing in this bar
+        chords_in_bar: list[str] = []
+
+        # include any chord that was already playing at bar_start
+        if chord_idx and chords[chord_idx-1][1] < bar_start:
+            chords_in_bar.append(chords[chord_idx-1][0])
+
+        # walk forward while the chord change time is inside the bar
+        while chord_idx < len(chords) and chords[chord_idx][1] < bar_end:
+            name = chords[chord_idx][0]
+            if not chords_in_bar or name != chords_in_bar[-1]:
+                chords_in_bar.append(name)
             chord_idx += 1
-        chord = chords[chord_idx - 1][0] if chord_idx else ""
-        chart_lines.append(f"{chord}\t{line}")
 
+        chord_text = " ".join(chords_in_bar)
+
+        # build the line (empty string for silent bar)
+        if chord_text or merged_lyric:
+            chart_lines.append(f"{chord_text}\t{merged_lyric}".rstrip())
+        else:
+            chart_lines.append("")  # placeholder for empty bar
+
+    # ── return final chart ──────────────────────────────────────────────
     return "\n".join(header + chart_lines)
 
 
