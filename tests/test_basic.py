@@ -21,6 +21,7 @@ def test_format_chart_basic(tmp_path):
         ('C', 0.0, 0.9),
         ('G', 2.0, 0.9),
     ]
+    beat_times = [0, 1, 2, 3, 4]
     text = ucr.format_chart(
         title='Test',
         bpm=60.0,
@@ -28,6 +29,7 @@ def test_format_chart_basic(tmp_path):
         time_sig='4/4',
         lyrics=lyrics,
         chords=chords,
+        beat_times=beat_times,
         confidence=80.0,
     )
     lines = text.splitlines()
@@ -42,6 +44,7 @@ def test_carryover_hidden(tmp_path):
     chords = [
         ('C', 0.0, 0.9),
     ]
+    beat_times = list(range(0, 9))
     text = ucr.format_chart(
         title='Test',
         bpm=60.0,
@@ -49,6 +52,7 @@ def test_carryover_hidden(tmp_path):
         time_sig='4/4',
         lyrics=lyrics,
         chords=chords,
+        beat_times=beat_times,
         confidence=80.0,
     )
     lines = text.splitlines()

@@ -57,6 +57,8 @@ REQUIRED = [
     "treetable",
     "imageio-ffmpeg",
     "pyspellchecker",
+    "madmom",
+    "aubio",
 ]
 
 _missing: list[str] = []
@@ -81,7 +83,7 @@ def ensure_dependencies() -> None:
 INPUT_DIR = Path("input_songs")
 OUTPUT_DIR = Path("output_charts")
 TIME_SIGNATURE = "4/4"  # default TS until we add an onset‑detector later
-MAX_CHANGES_PER_BAR = 3  # show at most N NEW chord names inside a single bar
+MAX_CHANGES_PER_BAR = 2  # show at most N NEW chord names inside a single bar
 
 DISCLAIMER = (
     "ULTIMATE CHORD READER uses automated stem separation and AI analysis.\n"
@@ -112,7 +114,8 @@ def format_chart(
     time_sig: str,
     lyrics: list[tuple[float, float, str, float]],
     chords: list[tuple[str, float, float]],
-    avg_conf: float,
+    beat_times: list[float],
+    confidence: float,
 ) -> str:
     """Return a human‑readable text chart – **exactly one line per bar**.
 
@@ -137,7 +140,7 @@ def format_chart(
         f"BPM: {bpm:.1f}",
         f"Key: {key}",
         f"Time Signature: {time_sig}",
-        f"Lyric Transcription Confidence: {avg_conf:.1f}%",
+        f"Lyric Transcription Confidence: {confidence:.1f}%",
         "",
     ]
 
@@ -147,21 +150,40 @@ def format_chart(
         last_time = max(last_time, max(e for _s, e, _t, _ in lyrics))
     if chords:
         last_time = max(last_time, chords[-1][1])
-    total_bars = math.ceil(last_time / bar_len)
+    if beat_times:
+        last_time = max(last_time, beat_times[-1])
+
+    bar_starts = [beat_times[i] for i in range(0, len(beat_times), beats_per_bar)] if beat_times else [0.0]
+    # drop trailing bars that start after the song ends
+    while len(bar_starts) > 1 and bar_starts[-1] >= last_time:
+        bar_starts.pop()
+
+    if beat_times and len(beat_times) > 1:
+        diffs = [b - a for a, b in zip(beat_times, beat_times[1:])]
+        import statistics
+        bar_len_est = statistics.median(diffs) * beats_per_bar
+    else:
+        bar_len_est = bar_len
+    while bar_starts[-1] + bar_len_est < last_time:
+        bar_starts.append(bar_starts[-1] + bar_len_est)
+
+    total_bars = len(bar_starts)
 
     # pre‑index lyric segs by bar (with 0.25 s grace so near‑boundary words join)
     grace = 0.25
     lyrics_by_bar: dict[int, list[str]] = {}
     for s, _e, txt, _c in lyrics:
-        bar_num = int((s + grace) // bar_len)
-        lyrics_by_bar.setdefault(bar_num, []).append(txt)
+        idx = 0
+        while idx + 1 < len(bar_starts) and bar_starts[idx + 1] <= s + grace:
+            idx += 1
+        lyrics_by_bar.setdefault(idx, []).append(txt)
 
     chart_lines: list[str] = []
     chord_idx = 0  # running index into *sorted* chord list
 
     for bar in range(total_bars):
-        bar_start = bar * bar_len
-        bar_end = bar_start + bar_len
+        bar_start = bar_starts[bar]
+        bar_end = bar_starts[bar + 1] if bar + 1 < len(bar_starts) else bar_start + bar_len_est
 
         # ── lyrics ────────────────────────────────────────────────────
         merged_lyric = " ".join(lyrics_by_bar.get(bar, [])).strip()
@@ -208,7 +230,7 @@ def process_file(path: str) -> Path:
     with tempfile.TemporaryDirectory() as tmpdir:
         vocal, inst, _ = separate_and_score(path, tmpdir)
         lyric_lines = transcribe(str(vocal), tmpdir)
-        bpm, key, chord_seq = analyze_instrumental(str(inst))
+        bpm, key, chord_seq, beat_times = analyze_instrumental(str(inst))
 
         # average Whisper confidence – log‑probabilities → probabilities → %
         if lyric_lines:
@@ -219,7 +241,7 @@ def process_file(path: str) -> Path:
 
         title = Path(path).stem
         chart = format_chart(title, bpm, key, TIME_SIGNATURE,
-                             lyric_lines, chord_seq, avg_conf)
+                             lyric_lines, chord_seq, beat_times, avg_conf)
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         out_path = OUTPUT_DIR / f"{title}_chart.txt"
