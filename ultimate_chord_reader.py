@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import List, Tuple
 
-import os, shutil, pathlib, imageio_ffmpeg
+import os, shutil, pathlib, imageio_ffmpeg, tempfile
+
+os.environ.setdefault("TORCH_HOME", "/tmp")
+os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
 import argparse, textwrap
 import math
 
@@ -63,6 +65,24 @@ INPUT_DIR = Path("input_songs")
 OUTPUT_DIR = Path("output_charts")
 TIME_SIGNATURE = "4/4"  # default time signature
 
+DISCLAIMER = (
+    "ULTIMATE CHORD READER uses automated stem separation and AI analysis.\n"
+    "All audio files and stems are automatically deleted immediately after processing.\n"
+    "Results are best-effort guesses; verify before public use.\n"
+)
+
+
+def overwrite_and_remove(path: Path) -> None:
+    """Overwrite a file with zeros and unlink it."""
+    if not path.exists():
+        return
+    try:
+        size = path.stat().st_size
+        with open(path, "wb", buffering=0) as f:
+            f.write(b"\x00" * size)
+    finally:
+        path.unlink(missing_ok=True)
+
 
 def format_chart(
     title: str,
@@ -77,7 +97,7 @@ def format_chart(
     lyric_probs = [math.exp(c) for _, _, _, c in lyrics]
     lyric_conf = (sum(lyric_probs) / len(lyric_probs) * 100) if lyric_probs else 0.0
 
-    header = [
+    header = list(DISCLAIMER.splitlines()) + [
         f"Title: {title}",
         f"BPM: {bpm:.1f}",
         f"Key: {key}",
@@ -114,23 +134,23 @@ def process_file(path: str) -> Path:
     from lyrics import transcribe
     from chords import analyze_instrumental
 
-    vocal, inst, conf = separate_and_score(path)
-    lyric_lines = transcribe(str(vocal))
-    bpm, key, chord_seq = analyze_instrumental(str(inst))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        vocal, inst, conf = separate_and_score(path, tmpdir)
+        lyric_lines = transcribe(str(vocal), tmpdir)
+        bpm, key, chord_seq = analyze_instrumental(str(inst))
 
-    title = Path(path).stem
-    chart = format_chart(title, bpm, key, TIME_SIGNATURE, lyric_lines, chord_seq, conf)
+        title = Path(path).stem
+        chart = format_chart(title, bpm, key, TIME_SIGNATURE, lyric_lines, chord_seq, conf)
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTPUT_DIR / f"{title}_chart.txt"
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(chart)
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        out_path = OUTPUT_DIR / f"{title}_chart.txt"
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(chart)
 
-    # Remove temporary stems directory entirely
-    stem_root = vocal.parent
-    shutil.rmtree(stem_root.parent, ignore_errors=True)
+        overwrite_and_remove(vocal)
+        overwrite_and_remove(inst)
 
-    return out_path
+        return out_path
 
 
 # TODO: Web GUI hook
