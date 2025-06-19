@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import List, Tuple
 
 import os, shutil, pathlib, imageio_ffmpeg
+import argparse, textwrap
+import math
 
 for getter, canon in (
     (imageio_ffmpeg.get_ffmpeg_exe, "ffmpeg"),
@@ -38,6 +40,7 @@ REQUIRED = [
     "openai-whisper",           # <- correct package
     "demucs", "dora-search", "treetable",
     "imageio-ffmpeg",           # <- brings ffprobe for Demucs API
+    "pyspellchecker",
 ]
 
 missing: list[str] = []
@@ -71,11 +74,15 @@ def format_chart(
     confidence: float,
 ) -> str:
     """Create a plain text chord chart."""
+    lyric_probs = [math.exp(c) for _, _, _, c in lyrics]
+    lyric_conf = (sum(lyric_probs) / len(lyric_probs) * 100) if lyric_probs else 0.0
+
     header = [
         f"Title: {title}",
         f"BPM: {bpm:.1f}",
         f"Key: {key}",
         f"Time Signature: {time_sig}",
+        f"Lyric Transcription Confidence: {lyric_conf:.1f}%",
         f"Separation Confidence: {confidence:.2f}",
         "",
     ]
@@ -90,7 +97,8 @@ def format_chart(
     for start, end, line, conf in lyrics:
         bar = int(start / bar_len)
         if bar != current_bar:
-            chart_lines.append("|")
+            if chart_lines:
+                chart_lines.append("")
             current_bar = bar
         while chord_idx < len(chords) and chords[chord_idx][1] <= start:
             chord_idx += 1
@@ -134,17 +142,71 @@ def process_file(path: str) -> Path:
 
 
 def main() -> None:
-    """Process all audio files in :data:`INPUT_DIR`."""
     ensure_dependencies()
-    INPUT_DIR.mkdir(exist_ok=True)
-    for file in INPUT_DIR.iterdir():
-        if not file.is_file():
-            continue
-        if file.suffix.lower() not in {".mp3", ".wav", ".flac", ".m4a", ".ogg"}:
-            continue
-        print(f"Processing {file}")
-        out = process_file(str(file))
-        print(f"Saved chart to {out}")
+
+    audio_exts = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}
+    files      = sorted(p for p in INPUT_DIR.iterdir()
+                        if p.is_file() and p.suffix.lower() in audio_exts)
+
+    if not files:
+        print("No audio files found in", INPUT_DIR)
+        return
+
+    # -------- argparse: accept --all or explicit file paths ----------
+    parser = argparse.ArgumentParser(
+        description="Ultimate Chord Reader – select which songs to analyse",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=textwrap.dedent("""\
+            If you run without arguments, you'll be asked to confirm each track.
+            Examples:
+              python ultimate_chord_reader.py --all
+              python ultimate_chord_reader.py \"my song.mp3\" \"other.wav\"
+        """),
+    )
+    parser.add_argument("tracks", nargs="*", metavar="TRACK",
+                        help="one or more filenames in input_songs/")
+    parser.add_argument("--all", action="store_true",
+                        help="process every file in input_songs/")
+
+    args = parser.parse_args()
+
+    # 1) explicit list or --all  → skip menu
+    if args.all:
+        selection = files
+    elif args.tracks:
+        wanted = set(args.tracks)
+        selection = [p for p in files if p.name in wanted]
+        missing   = wanted - {p.name for p in selection}
+        if missing:
+            print("Not found in input_songs/:", *missing, sep="\n  • ")
+            return
+    # 2) no args  → interactive yes/no prompt
+    else:
+        print("Found the following tracks in", INPUT_DIR)
+        for f in files:
+            print("  •", f.name)
+        choice = input("Select all? [y/N]: ").strip().lower()
+        if choice.startswith("y"):
+            selection = files
+        else:
+            selection = []
+            for f in files:
+                ans = input(f"Process '{f.name}'? [y/N]: ").strip().lower()
+                if ans.startswith("y"):
+                    selection.append(f)
+
+    if not selection:
+        print("Nothing selected. Exiting.")
+        return
+
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    for file in selection:
+        print(f"\nProcessing {file}")
+        try:
+            out = process_file(str(file))
+            print(f"Saved chart to {out}")
+        except Exception as exc:
+            print("⚠️  Failed on", file.name, "-", exc)
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entry point

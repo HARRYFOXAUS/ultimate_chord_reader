@@ -4,9 +4,27 @@ from __future__ import annotations
 
 from typing import List, Tuple
 
+import math
+import re
+from spellchecker import SpellChecker
+
 import whisper  # provided by the *openai-whisper* package (pip install openai-whisper)
 
 import os, shutil, pathlib, imageio_ffmpeg  # provides self-contained binaries
+
+_spell = SpellChecker()
+
+
+def _spellcheck_line(text: str) -> str:
+    """Return the text with simple spelling corrections applied."""
+    tokens = re.findall(r"\w+|\W+", text)
+    corrected = []
+    for tok in tokens:
+        if tok.isalpha():
+            corrected.append(_spell.correction(tok) or tok)
+        else:
+            corrected.append(tok)
+    return "".join(corrected)
 
 for getter, canon in (
     (imageio_ffmpeg.get_ffmpeg_exe, "ffmpeg"),
@@ -41,5 +59,14 @@ def transcribe(vocal_path: str) -> List[Tuple[float, float, str, float]]:
         end = float(seg.get("end", 0.0))
         text = seg.get("text", "").strip()
         conf = float(seg.get("avg_logprob", 0.0))
+
+        prob = math.exp(conf)
+        if prob < 0.15:
+            text = "???"
+        else:
+            text = _spellcheck_line(text)
+            if prob < 0.5:
+                text += " (???)"
+
         lines.append((start, end, text, conf))
     return lines

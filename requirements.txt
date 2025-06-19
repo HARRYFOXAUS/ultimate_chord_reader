@@ -10,3 +10,4 @@ treetable==0.2.5
 openai-whisper>=20231101
 imageio-ffmpeg>=0.4.9
 # imageio-ffmpeg bundles ffprobe so Demucs Python API works
+pyspellchecker
