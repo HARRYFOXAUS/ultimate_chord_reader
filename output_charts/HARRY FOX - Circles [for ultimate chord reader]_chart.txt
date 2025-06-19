@@ -1,0 +1,122 @@
+ULTIMATE CHORD READER uses automated stem separation and AI analysis.
+All audio files and stems are automatically deleted immediately after processing.
+Results are best‑effort guesses; verify before public use.
+
+Title: HARRY FOX - Circles [for ultimate chord reader]
+BPM: 132.5
+Key: A#
+Time Signature: 4/4
+Lyric Transcription Confidence: 43.8%
+
+Fmaj9 Gm9 D#9	The (???) side (???) runs (???) the (???) thorns (???) her brains (???) on the (???) floor (???) heartbeat kicks in (???) her lips (???)
+Amaj7 G#maj7 Amaj7	begin breaking (???)
+Amaj7 G#maj7 G#maj9
+C Cm C	dog (???) and walls (???)
+Cm C#maj9 Cm9	within (???)
+Gmaj7 Gmaj9 Gm9	the (???)
+F#m9 B9 F#m9
+F#m9 Amaj7 F#m9	side (???)
+G#9 A#m9 G#maj9
+C#maj7 Cmaj7 C	runs (???)
+Gmaj7 Gmaj9 Gm9	the (???)
+Bm9 C#m9 C#maj9	side (???)
+Dmaj9 Dmaj7 Dmaj9
+D#9 Dmaj9 Dmaj7	runs (???)
+C#m9 Bmaj9 Cmaj9
+D#9 Bm9 Dmaj9
+C#maj9 Dmaj9 Dmaj7	the (???)
+C#maj9 Bm9 C#maj9	side (???)
+F#maj9 G#maj9 F#maj9	runs (???)
+F#maj9 C# Dmaj7	the (???)
+G#maj9 Fm9 G#maj9	floor
+F#m9 F#maj9 Gm9
+Gmaj9 F#maj9 Fm9	heartbeat
+Fm9 F#maj9 Fm9
+Fm9 G#maj9 F#m9	kicks in her
+G#maj9 F#maj9 Fm9
+Fm9 G#maj9 Fm9	heartbeat
+F#maj9 Gm9 G#m9
+Fm9 G#maj9 Gmaj9	kicks in
+Gmaj9 Fm9 G#maj9
+Fm9 G#maj9 Fm9
+Em9 Dmaj9 F#m9	her
+Fm9 G#maj9 Fm9	heartbeat
+F#maj9 Fm9 G#maj9	kicks in
+G#maj9 Gmaj9 Fm9
+G#maj9 Fm9 G#maj9	her
+G#maj9 Fm9 G#maj9
+G#m9 Fm9 G#maj9	heart
+F#maj9 G#m9 Gm9	heartbeat
+
+Amaj7 G#maj7 G#maj9	kicks in her lips
+C#maj9 C#maj7 Cmaj7	begin breaking
+C#maj7 A#m9 C#maj7	dog
+Gmaj7 G Gm	and walls
+F#m9 G#m9 G#9	within
+Amaj7 G#maj7 G#maj9	the
+Amaj7 G#maj7 G#maj9	side
+Am9 G#9 G#maj9	runs the
+F#m9 B9 G#m9	side runs
+Bmaj9 B9 G#m9	the side
+Amaj7 F#m9 Amaj9	runs the
+G#maj7 G#maj9 Cm9	side runs
+G#maj9 G#9 G#maj9	the ???
+C#m9 B9 G#9	??? ???
+B9 Gmaj9 Gm9	???
+F#m9 Amaj9 F#m9	??? ??? ???
+G#maj9 G#maj7 G#maj9
+B9 G#9 G#maj9	??? ??? ???
+C#maj9 C#m9 B9	??? ???
+Gm9 G#m9 B9	??? ???
+Amaj7 G#maj9 G#m9
+G#maj9 G#m9 G#maj9
+F#m9 G#maj9 F#9	???
+F#m9 G#9 G#maj9	???
+E9 Cmaj9 A9	???
+Dmaj9 Dmaj7 Dmaj9	???
+C#maj9 Dmaj9 C#maj7	???
+Bm9 C#maj9 Bm9
+Dmaj9 Dmaj7 Dmaj9	I don't know where I'm from.
+Dmaj9 Dmaj7 Bm9
+Dmaj9 Bm9 C#maj9	You should take my love when I say you're on a road.
+Bm9 C#maj9 C#m9
+Bm9 Amaj9 C#maj9	Just let go of me.
+C#maj9 D#9 G#maj9
+G#maj9 Fm9 Amaj9	For I break your mind.
+F#maj9 Gmaj9 A9
+Fm9 G#maj9 Cm9
+G#maj9 Gm9 G#maj9
+D#maj9 G#maj9 Gm9
+G#maj9 Fm9 Gmaj9
+Fm9 G#maj9 Gmaj9
+G#maj9 Gmaj9 Fm9
+F#m9 F#maj9 F#m9
+Fm9 D#maj9 Fm9
+Fm9 Gmaj9 Fm9	It's up to you. (???)
+G#maj9 Fm9 G#maj9
+G#maj9 Gmaj9 F#maj9
+F#maj9 G#m9 G#maj9
+G#maj9 Fm9 F#maj9
+G#maj9 Fm9 G#maj9
+Fm9 G#maj9 Fm9	What's up, I don't know why you're still. (???)
+Fm9 G#maj9 Gmaj9
+A#9 C#maj9 C#m9	We still they still be. (???)
+G#maj9 G#m G#maj9
+G#maj9 G#maj7 G#maj9
+G#maj9 Cm9 A#m9	I don't know why you're still. (???)
+Cm D#maj7 Cm
+G#maj7 G#maj9 G#maj7	We still they still. (???)
+G#maj9 G#maj7 G#maj9
+G#maj9 G# G#maj7	It's no baby (???)
+G#maj9 Cm9 A#m9
+Cm G#maj7 Fm9
+G#maj9 G#maj7 G#maj9
+G# G#maj7 G#maj9
+G#maj7 G#maj9 G#maj7
+G# G#maj7 G#maj9
+G#maj7 G#maj9 G#maj7
+G# Fm G#
+Cm Em9 Gmaj7
+Em9 Cm9 Em9
+Fm9 Cmaj7 C
+G#m9 Bmaj9 G#m9

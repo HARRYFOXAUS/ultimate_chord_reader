@@ -47,18 +47,12 @@ for getter, canon in (
 # Hard dependencies – we fail fast with a helpful msg if any are missing
 # ---------------------------------------------------------------------------
 REQUIRED = [
-    "torch",
-    "librosa",
-    "numpy",
-    "soundfile",
-    "openai-whisper",  # correct Whisper package
-    "demucs",
-    "dora-search",
-    "treetable",
-    "imageio-ffmpeg",
-    "pyspellchecker",
-    "madmom",
-    "aubio",
+    # runtime libs
+    "torch", "librosa", "numpy", "soundfile",
+    "openai-whisper", "demucs", "dora-search", "treetable",
+    "imageio-ffmpeg", "pyspellchecker",
+    "wheel",            # manylinux/OSX build helper
+    "aubio",            # fallback beat tracker
 ]
 
 _missing: list[str] = []
