@@ -11,4 +11,4 @@ openai-whisper>=20231101
 imageio-ffmpeg>=0.4.9
 # imageio-ffmpeg bundles ffprobe so Demucs Python API works
 pyspellchecker
-aubio>=0.4.9
+essentia==2.1b6

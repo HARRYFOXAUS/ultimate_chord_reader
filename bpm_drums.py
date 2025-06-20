@@ -27,7 +27,7 @@ def _separate_drums(src: str, work_dir: str) -> Path:
     cmd = [
         sys.executable,
         "-m", "demucs.separate",
-        "-n", "htdemucs",          # ⟵  four-stem model, gives drums.wav
+        "-n", "htdemucs_6s",  # six-stem model
         "-o", str(out),
         src,
     ]
@@ -36,7 +36,7 @@ def _separate_drums(src: str, work_dir: str) -> Path:
 
     drum = next(out.rglob("drums.wav"), None)
     if drum is None:
-        raise RuntimeError("drums.wav not found – Demucs model mismatch")
+        raise RuntimeError("drums stem missing, Demucs truncated")
     return drum
 
 

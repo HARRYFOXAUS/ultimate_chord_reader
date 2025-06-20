@@ -54,7 +54,7 @@ REQUIRED = [
     "torch", "librosa", "numpy", "soundfile",
     "openai_whisper", "demucs", "dora_search", "treetable",
     "imageio_ffmpeg", "pyspellchecker",
-    "wheel", "aubio",
+    "wheel",
 ]
 missing: list[str] = []
 for pkg in REQUIRED:
@@ -101,13 +101,31 @@ def overwrite_and_remove(path: Path) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Demucs wrapper – cope with old/new signatures
 # ─────────────────────────────────────────────────────────────────────────────
-def run_separation(src: str, workdir: str, *, model="htdemucs_6s"):
+def run_separation(src: str, workdir: str, *, model="htdemucs_6s", two_stems=None):
     from models.separation_manager import separate_and_score
 
     params = signature(separate_and_score).parameters
     if "model_name" in params:
-        return separate_and_score(src, workdir, model_name=model)
+        return separate_and_score(src, workdir, model_name=model, two_stems=two_stems)
     return separate_and_score(src, workdir)
+
+
+def safe_analyze(path: str, *, bpm: float, beats: list[float]):
+    from chords import analyze_instrumental
+    sig = signature(analyze_instrumental).parameters
+    kwargs = {}
+    if "bpm" in sig:
+        kwargs["bpm"] = bpm
+    if "beats" in sig:
+        kwargs["beats"] = beats
+    ret = analyze_instrumental(path, **kwargs)
+    if len(ret) == 3:
+        _bpm, key, chords = ret
+    elif len(ret) == 2:
+        key, chords = ret
+    else:
+        raise RuntimeError("analyze_instrumental returned weird tuple")
+    return key, chords
 
 
 
@@ -188,7 +206,7 @@ def process_file(path: str) -> Path:
         print(f"[BPM] {src:9s} → {bpm:.1f}")
 
         # 4. key + chords ----------------------------------------------------
-        key, chord_seq = analyze_instrumental(str(inst))
+        key, chord_seq = safe_analyze(str(inst), bpm=bpm, beats=beat_times)
 
         # 5. confidence ------------------------------------------------------
         if lyric_lines:

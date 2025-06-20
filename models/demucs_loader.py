@@ -72,13 +72,17 @@ def run_demucs(input_path: str, output_dir: str, *, model: str = "htdemucs") -> 
 
             stems_dir = out_root / Path(input_path).stem
             stems_dir.mkdir(exist_ok=True)
-            for source, name in zip(sources, demucs_model.sources):
+            names = demucs_model.sources
+            for source, name in zip(sources, names):
                 save_audio(source, stems_dir / f"{name}.wav", demucs_model.samplerate)
 
             vocal = stems_dir / "vocals.wav"
-            inst = stems_dir / "no_vocals.wav"
-            if not inst.exists():
-                inst = next(stems_dir.glob("*accompaniment*.wav"), inst)
+            inst  = stems_dir / "no_vocals.wav"
+            if not inst.exists() and vocal.exists():
+                # Mix all non-vocal stems into no_vocals.wav
+                other = [s for s, n in zip(sources, names) if n != "vocals"]
+                mix = sum(other)
+                save_audio(mix, inst, demucs_model.samplerate)
 
             if vocal.exists() and inst.exists():
                 print("[Demucs] Separated with Python API")
@@ -92,7 +96,6 @@ def run_demucs(input_path: str, output_dir: str, *, model: str = "htdemucs") -> 
     # 2) ---------- CLI via python -m demucs.separate -------------------
     cli_cmd = [
         sys.executable, "-m", "demucs.separate",
-        "--two-stems=vocals",
         "-n", model,
         "-o", str(out_root),
         input_path,
@@ -108,7 +111,7 @@ def run_demucs(input_path: str, output_dir: str, *, model: str = "htdemucs") -> 
                 "Run `pip install demucs` in this environment."
             )
         _run([
-            demucs_bin, "--two-stems=vocals",
+            demucs_bin,
             "-n", model,
             "-o", str(out_root), input_path,
         ])
@@ -123,14 +126,22 @@ def run_demucs(input_path: str, output_dir: str, *, model: str = "htdemucs") -> 
 
         # Pick stems robustly: ‘vocals.wav’ vs ‘no_vocals.wav’ (or accompaniment)
     vocal = next((p for p in wav_files if p.name.lower().startswith("vocals")), None)
-    inst  = next(
-        (p for p in wav_files if p is not vocal and (
-            "no_vocals" in p.name.lower() or "accompaniment" in p.name.lower())),
-        None,
-    )
-    if inst is None and vocal is not None and len(wav_files) == 2:
-        # fallback: exactly two files, so the other one must be instrumental
-        inst = next(p for p in wav_files if p is not vocal)
+    inst = next((p for p in wav_files if "no_vocals" in p.name.lower()), None)
+
+    if inst is None and vocal is not None:
+        others = [p for p in wav_files if p is not vocal and "vocals" not in p.name.lower()]
+        if others:
+            import soundfile as sf
+            import numpy as np
+            data = []
+            sr = None
+            for p in others:
+                d, sr = sf.read(str(p))
+                data.append(d)
+            min_len = min(len(d) for d in data)
+            mix = sum(d[:min_len] for d in data) / max(len(data), 1)
+            inst = vocal.with_name("no_vocals.wav")
+            sf.write(str(inst), mix, sr)
 
     if vocal is None or inst is None:
         raise RuntimeError("Couldn’t find expected stems in Demucs output")
