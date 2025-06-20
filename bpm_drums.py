@@ -115,3 +115,27 @@ def get_bpm_from_drums(src: str) -> Tuple[float, List[float]]:
         )
 
     return bpm, beat_times
+
+# ------------------------------------------------------------------
+# Generic Librosa wrapper (shared by fallback paths)
+# ------------------------------------------------------------------
+def bpm_via_librosa(wav_path: str) -> tuple[float, list[float]]:
+    """Return (bpm, beat_times) from *wav_path* or raise RuntimeError."""
+    import librosa
+    y, sr = librosa.load(wav_path, sr=None, mono=True)
+    tempo, frames = librosa.beat.beat_track(
+        y=y, sr=sr, units="frames", start_bpm=90, tightness=400, trim=False
+    )
+    if len(frames) < 4:
+        raise RuntimeError("Too few beats")
+    beats = librosa.frames_to_time(frames, sr=sr).tolist()
+    # simple median-filter like in get_bpm_from_drums
+    ibi   = np.diff(beats)
+    med   = np.median(ibi)
+    good  = ibi[(ibi > 0.7*med) & (ibi < 1.3*med)]
+    if len(good) < max(3, 0.5*len(ibi)):
+        raise RuntimeError("Inconsistent beat intervals")
+    bpm   = 60.0 / float(np.median(good))
+    while bpm > 160: bpm /= 2
+    while bpm < 60:  bpm *= 2
+    return bpm, beats
