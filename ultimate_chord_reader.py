@@ -1,7 +1,4 @@
-"""Entry point for Ultimate Chord Reader.
-
-BPM detection: drums → no-vocals → mix (Librosa fallback)
-"""
+"""Entry point for Ultimate Chord Reader."""
 
 from __future__ import annotations
 
@@ -111,50 +108,25 @@ def format_chart(
     time_sig: str,
     lyrics: list[tuple[float, float, str, float]],
     chords: list[tuple[str, float, float]],
+    beat_times: list[float],
     confidence: float,
-    beats: list[float] | None = None,
-    **extra,
 ) -> str:
-    """Return a human-readable text chart – **exactly one line per bar**."""
+    """Return a human‑readable text chart – **exactly one line per bar**.
 
-    from collections import defaultdict
-    try:
-        import numpy as np
-    except Exception:  # pragma: no cover - fallback when numpy missing
-        np = None
+    * Lyrics whose *start* lies in the same bar are merged (0.25 s grace).
+    * Every bar appears (empty line if nothing happens).
+    * At most `MAX_CHANGES_PER_BAR` fresh chord changes per bar are displayed –
+      continuing chords are omitted to avoid the “wall‑of‑chords”.
+    """
+    import numpy as np
 
-    if np is not None and isinstance(bpm, getattr(np, "ndarray", ())):
+    if isinstance(bpm, np.ndarray):
         bpm = float(bpm.squeeze())
 
-    if beats is None:
-        beats = extra.get("beat_times", [])
-    beats_list = list(beats or [0.0])
-    bar_of_beat = [i // 4 for i in range(len(beats_list))]
-    last_bar = int(bar_of_beat[-1])
+    beats_per_bar = int(time_sig.split("/")[0]) if "/" in time_sig else 4
+    bar_len = (60.0 / bpm) * beats_per_bar
 
-    def nearest_beat_idx(t: float) -> tuple[int, int | None]:
-        diffs = [abs(b - t) for b in beats_list]
-        i = diffs.index(min(diffs))
-        return i, (None if diffs[i] > 0.1 else bar_of_beat[i])
-
-    print(f"[ALIGN] using {len(beats_list)} beats → {last_bar+1} bars")
-
-    bars_chords: defaultdict[int, list[str]] = defaultdict(list)
-    bars_lyrics: defaultdict[int, list[str]] = defaultdict(list)
-
-    for name, t, _ in chords:
-        _idx, bar = nearest_beat_idx(t)
-        if bar is None:
-            continue
-        if not bars_chords[bar] or bars_chords[bar][-1] != name:
-            bars_chords[bar].append(name)
-
-    for start, _end, text, _c in lyrics:
-        _idx, bar = nearest_beat_idx(start)
-        if bar is None:
-            continue
-        bars_lyrics[bar].append(text)
-
+    # ── header ────────────────────────────────────────────────────────────
     header = [
         DISCLAIMER.rstrip(),
         "",
@@ -166,13 +138,78 @@ def format_chart(
         "",
     ]
 
-    lines: list[str] = []
-    for b in range(last_bar + 1):
-        chord_text = " ".join(bars_chords[b][:4])
-        lyric_text = " ".join(bars_lyrics[b])
-        lines.append(f"{chord_text}\t{lyric_text}".rstrip())
+    # ── total length in bars ─────────────────────────────────────────────
+    last_time = 0.0
+    if lyrics:
+        last_time = max(last_time, max(e for _s, e, _t, _ in lyrics))
+    if chords:
+        last_time = max(last_time, chords[-1][1])
+    if beat_times:
+        last_time = max(last_time, beat_times[-1])
 
-    return "\n".join(header + lines)
+    bar_starts = [beat_times[i] for i in range(0, len(beat_times), beats_per_bar)] if beat_times else [0.0]
+    # drop trailing bars that start after the song ends
+    while len(bar_starts) > 1 and bar_starts[-1] >= last_time:
+        bar_starts.pop()
+
+    if beat_times and len(beat_times) > 1:
+        diffs = [b - a for a, b in zip(beat_times, beat_times[1:])]
+        import statistics
+        bar_len_est = statistics.median(diffs) * beats_per_bar
+    else:
+        bar_len_est = bar_len
+    while bar_starts[-1] + bar_len_est < last_time:
+        bar_starts.append(bar_starts[-1] + bar_len_est)
+
+    total_bars = len(bar_starts)
+
+    # pre‑index lyric segs by bar (with 0.25 s grace so near‑boundary words join)
+    grace = 0.25
+    lyrics_by_bar: dict[int, list[str]] = {}
+    for s, _e, txt, _c in lyrics:
+        idx = 0
+        while idx + 1 < len(bar_starts) and bar_starts[idx + 1] <= s + grace:
+            idx += 1
+        lyrics_by_bar.setdefault(idx, []).append(txt)
+
+    chart_lines: list[str] = []
+    chord_idx = 0  # running index into *sorted* chord list
+
+    for bar in range(total_bars):
+        bar_start = bar_starts[bar]
+        bar_end = bar_starts[bar + 1] if bar + 1 < len(bar_starts) else bar_start + bar_len_est
+
+        # ── lyrics ────────────────────────────────────────────────────
+        merged_lyric = " ".join(lyrics_by_bar.get(bar, [])).strip()
+
+        # ── chords ────────────────────────────────────────────────────
+        chords_in_bar: list[str] = []
+
+        # 1) chord already sounding at bar start
+        carry_over = None
+        if chord_idx and chords[chord_idx - 1][1] < bar_start:
+            carry_over = chords[chord_idx - 1][0]
+            chords_in_bar.append(carry_over)
+
+        # 2) new changes inside the bar (capped)
+        j = chord_idx
+        while j < len(chords) and chords[j][1] < bar_end:
+            name = chords[j][0]
+            if (not chords_in_bar or name != chords_in_bar[-1]) and \
+               len(chords_in_bar) < 1 + MAX_CHANGES_PER_BAR:
+                chords_in_bar.append(name)
+            j += 1
+        chord_idx = j
+
+        # hide carry‑over if absolutely nothing new happened
+        if carry_over and len(chords_in_bar) == 1:
+            chords_in_bar.clear()
+
+        chord_text = " ".join(chords_in_bar)
+        line = f"{chord_text}\t{merged_lyric}".rstrip()
+        chart_lines.append(line)
+
+    return "\n".join(header + chart_lines)
 
 # ---------------------------------------------------------------------------
 # Main pipeline: separation → transcription → chord analyse → chart
@@ -183,36 +220,11 @@ def process_file(path: str) -> Path:
     from models.separation_manager import separate_and_score
     from lyrics import transcribe
     from chords import analyze_instrumental
-    from bpm_drums import get_bpm_from_drums, bpm_via_librosa
 
     with tempfile.TemporaryDirectory() as tmpdir:
         vocal, inst, _ = separate_and_score(path, tmpdir)
         lyric_lines = transcribe(str(vocal), tmpdir)
-
-        # ---------------------------------------------------------------
-        # Hierarchical BPM detection
-        # ---------------------------------------------------------------
-        bpm_source = "??"
-        try:
-            bpm, beat_times = get_bpm_from_drums(str(inst))
-            bpm_source = "drums"
-        except Exception as e1:
-            try:
-                bpm, beat_times = bpm_via_librosa(str(inst))    # no-vocals stem
-                bpm_source = "no_vocals"
-            except Exception as e2:
-                bpm, beat_times = bpm_via_librosa(path)         # full mix
-                bpm_source = "mix"
-
-        print(f"[BPM] {bpm_source:9s} ➜ {bpm:.1f}")
-
-        try:
-            key, chord_seq = analyze_instrumental(str(inst), bpm=bpm, beats=beat_times)
-        except TypeError:
-            try:
-                key, chord_seq = analyze_instrumental(str(inst), bpm=bpm)
-            except TypeError:
-                key, chord_seq = analyze_instrumental(str(inst))
+        bpm, key, chord_seq, beat_times = analyze_instrumental(str(inst))
 
         # average Whisper confidence – log‑probabilities → probabilities → %
         if lyric_lines:
@@ -223,7 +235,7 @@ def process_file(path: str) -> Path:
 
         title = Path(path).stem
         chart = format_chart(title, bpm, key, TIME_SIGNATURE,
-                             lyric_lines, chord_seq, avg_conf, beat_times)
+                             lyric_lines, chord_seq, beat_times, avg_conf)
 
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         out_path = OUTPUT_DIR / f"{title}_chart.txt"
