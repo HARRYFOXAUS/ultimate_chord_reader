@@ -1,5 +1,4 @@
 """Estimate BPM by tracking kicks in a Demucs-extracted drum stem.
-
 Uses Librosa beat_track (tightness = 400) + robust median filtering;
 raises RuntimeError if detection is unreliable or highly variable.
 """
@@ -46,27 +45,34 @@ def _separate_drums(src: str, work_dir: str) -> Path:
 
 
 # ----------------------------------------------------------------------
-# 2. Beat tracking with librosa
+# 2. Beat tracking with Librosa
 # ----------------------------------------------------------------------
-def _librosa_beats(wav_path: str) -> tuple[float, list[float]]:
-    """Return estimated BPM and beat times via librosa.beat_track."""
+def _librosa_beats(wav_path: str) -> list[float]:
+    """
+    Return beat times (in seconds) detected by Librosa on a *mono* drum stem.
 
-    y, sr = sf.read(wav_path, dtype="float32", always_2d=False)
-    if y.ndim > 1:
-        y = y.mean(axis=1)
+    Steps
+    -----
+    1.  y, sr = librosa.load(wav_path, sr=44100, mono=True)
+    2.  tempo, beat_frames = librosa.beat.beat_track(
+            y=y,
+            sr=sr,
+            units="frames",
+            start_bpm=90.0,      # good initial guess
+            tightness=100,       # favour consistent tempo
+        )
+    3.  return librosa.frames_to_time(beat_frames, sr=sr).tolist()
+    """
 
-    tempo, beat_frames = librosa.beat.beat_track(
+    y, sr = librosa.load(wav_path, sr=44100, mono=True)
+    _, beat_frames = librosa.beat.beat_track(
         y=y,
         sr=sr,
         units="frames",
         start_bpm=90.0,
-        tightness=400,
-        trim=False,
+        tightness=100,
     )
-
-    beat_times = librosa.frames_to_time(beat_frames, sr=sr).tolist()
-
-    return float(tempo), beat_times
+    return librosa.frames_to_time(beat_frames, sr=sr).tolist()
 
 
 # ----------------------------------------------------------------------
