@@ -1,4 +1,7 @@
-"""Entry point for Ultimate Chord Reader."""
+"""Entry point for Ultimate Chord Reader.
+
+BPM detection: drums → no-vocals → mix (Librosa fallback)
+"""
 
 from __future__ import annotations
 
@@ -220,11 +223,30 @@ def process_file(path: str) -> Path:
     from models.separation_manager import separate_and_score
     from lyrics import transcribe
     from chords import analyze_instrumental
+    from bpm_drums import get_bpm_from_drums, bpm_via_librosa
 
     with tempfile.TemporaryDirectory() as tmpdir:
         vocal, inst, _ = separate_and_score(path, tmpdir)
         lyric_lines = transcribe(str(vocal), tmpdir)
-        bpm, key, chord_seq, beat_times = analyze_instrumental(str(inst))
+
+        # ---------------------------------------------------------------
+        # Hierarchical BPM detection
+        # ---------------------------------------------------------------
+        bpm_source = "??"
+        try:
+            bpm, beat_times = get_bpm_from_drums(str(inst))
+            bpm_source = "drums"
+        except Exception as e1:
+            try:
+                bpm, beat_times = bpm_via_librosa(str(inst))    # no-vocals stem
+                bpm_source = "no_vocals"
+            except Exception as e2:
+                bpm, beat_times = bpm_via_librosa(path)         # full mix
+                bpm_source = "mix"
+
+        print(f"[BPM] {bpm_source:9s} ➜ {bpm:.1f}")
+
+        key, chord_seq = analyze_instrumental(str(inst), bpm_hint=bpm)
 
         # average Whisper confidence – log‑probabilities → probabilities → %
         if lyric_lines:
