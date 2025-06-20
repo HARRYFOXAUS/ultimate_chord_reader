@@ -6,7 +6,6 @@ from typing import Dict, List, Tuple
 
 import librosa
 import numpy as np
-from bpm_drums import get_bpm_from_drums
 
 NOTE_NAMES = [
     "C",
@@ -49,47 +48,50 @@ def _build_chord_templates() -> Dict[str, List[int]]:
 
 
 def analyze_instrumental(
-    inst_path: str, sr: int = 44100
-) -> Tuple[float, str, List[Tuple[str, float, float]], List[float]]:
-    """Analyze BPM, key, and chords from an instrumental stem."""
+    inst_path: str,
+    sr: int = 44100,
+) -> Tuple[str, List[Tuple[str, float, float]]]:
+    """
+    Analyze an *instrumental* stem and return:
 
-    try:
-        tempo, beat_times = get_bpm_from_drums(inst_path)
-        y, sr = librosa.load(inst_path, sr=sr)
-    except Exception:
-        y, sr = librosa.load(inst_path, sr=sr)
-        tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
-        beat_times = librosa.frames_to_time(beats, sr=sr).tolist()
-        while tempo > 160:
-            tempo /= 2.0
-        while tempo < 60:
-            tempo *= 2.0
+        key   – e.g. "C", "G#m", "F#maj7" (string)
+        chords – list of (chord_name, start_time_sec, similarity_score)
 
-    chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
-    key = librosa.feature.chroma_stft(y=y, sr=sr).mean(axis=1)
-    key_idx = key.argmax()
-    keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-    est_key = keys[key_idx % 12]
+    BPM / beat-times are **not** computed here any more – those are handled
+    earlier in the main pipeline.
+    """
 
+    import librosa
+    import numpy as np
+
+    y, sr = librosa.load(inst_path, sr=sr)
+
+    # -------- key detection (same as before) -----------------------------
+    chroma = librosa.feature.chroma_stft(y=y, sr=sr)
+    key_idx = chroma.mean(axis=1).argmax()
+    key_names = ["C", "C#", "D", "D#", "E", "F",
+                 "F#", "G", "G#", "A", "A#", "B"]
+    est_key = key_names[key_idx % 12]
+
+    # -------- chord template matching (unchanged) ------------------------
+    chroma_cqt = librosa.feature.chroma_cqt(y=y, sr=sr)
     chord_templates = _build_chord_templates()
 
     chords: List[Tuple[str, float, float]] = []
-    for i in range(chroma.shape[1]):
-        frame = chroma[:, i]
-        best = None
-        best_score = -1.0
+    for i in range(chroma_cqt.shape[1]):
+        frame = chroma_cqt[:, i]
+        best, best_score = None, -1.0
         for name, tmpl in chord_templates.items():
-            tmpl_vec = np.array(tmpl)
+            tmpl_vec = np.asarray(tmpl)
             score = float(
                 np.dot(frame, tmpl_vec)
                 / (np.linalg.norm(frame) * np.linalg.norm(tmpl_vec) + 1e-6)
             )
             if score > best_score:
-                best = name
-                best_score = score
+                best, best_score = name, score
         if best:
-            time = float(librosa.frames_to_time(i, sr=sr))
-            chords.append((best, time, best_score))
+            time_s = float(librosa.frames_to_time(i, sr=sr))
+            chords.append((best, time_s, best_score))
 
-    return tempo, est_key, chords, beat_times
+    return est_key, chords
 
