@@ -19,6 +19,11 @@ from pathlib import Path
 # THIRD-PARTY
 # ─────────────────────────────────────────────────────────────────────────────
 import imageio_ffmpeg                      # ships static ffmpeg/ffprobe
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from chords import analyze_instrumental
+except Exception:  # heavy deps missing in tests
+    analyze_instrumental = None  # type: ignore
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ENV / PATH
@@ -105,46 +110,19 @@ def run_separation(src: str, workdir: str, *, model="htdemucs_6s"):
     return separate_and_score(src, workdir)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# chords.analyze_instrumental wrapper (signature-safe)
-# ─────────────────────────────────────────────────────────────────────────────
-def _run_analyze(wav_path: str, *, bpm: float | None = None,
-                 beats: list[float] | None = None):
-    """
-    Call chords.analyze_instrumental while coping with every known
-    signature / return format.  Always returns (key, chord_seq).
-    """
-    from chords import analyze_instrumental
-
-    params = signature(analyze_instrumental).parameters
-    kwargs: dict[str, object] = {}
-    if "bpm"   in params and bpm   is not None: kwargs["bpm"]   = bpm
-    if "beats" in params and beats is not None: kwargs["beats"] = beats
-
-    result = analyze_instrumental(wav_path, **kwargs)
-
-    if len(result) == 3:     # (bpm, key, chords)
-        _, key, chords = result
-    elif len(result) == 2:   # (key, chords)
-        key, chords = result
-    else:
-        raise RuntimeError("Unexpected return from analyze_instrumental")
-
-    return key, chords
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CHART FORMATTER – one line per bar
 # ─────────────────────────────────────────────────────────────────────────────
 def format_chart(title: str, bpm: float, key: str, time_sig: str,
-                 lyrics, chords, conf_pct: float, beats=None):
+                 lyrics, chords, confidence: float, beat_times=None):
     from collections import defaultdict
     import numpy as np
 
     if isinstance(bpm, np.ndarray):
         bpm = float(bpm.squeeze())
 
-    beats = list(beats or [0.0])
+    beats = list(beat_times or [0.0])
     bar_of_beat = [i // 4 for i in range(len(beats))]
     last_bar = bar_of_beat[-1]
 
@@ -172,7 +150,7 @@ def format_chart(title: str, bpm: float, key: str, time_sig: str,
         f"BPM: {bpm:.1f}",
         f"Key: {key}",
         f"Time Signature: {time_sig}",
-        f"Lyric Transcription Confidence: {conf_pct:.1f}%", "",
+        f"Lyric Transcription Confidence: {confidence:.1f}%", "",
     ]
 
     lines = [
@@ -210,7 +188,7 @@ def process_file(path: str) -> Path:
         print(f"[BPM] {src:9s} → {bpm:.1f}")
 
         # 4. key + chords ----------------------------------------------------
-        key, chord_seq = _run_analyze(str(inst), bpm=bpm, beats=beat_times)
+        key, chord_seq = analyze_instrumental(str(inst))
 
         # 5. confidence ------------------------------------------------------
         if lyric_lines:
