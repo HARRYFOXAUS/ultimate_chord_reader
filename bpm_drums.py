@@ -22,15 +22,12 @@ from ultimate_chord_reader import overwrite_and_remove
 # 1. Demucs separation – identical to your previous helper
 # ----------------------------------------------------------------------
 def _separate_drums(src: str, work_dir: str) -> Path:
-    """
-    Run Demucs (6-stem mode) and return the drums stem.
-    Raises RuntimeError if no drum file is produced.
-    """
+    """Run Demucs to extract the drum stem and return its path."""
     out = Path(work_dir)
     cmd = [
-        sys.executable, "-m", "demucs.separate",
-        "-n", "htdemucs_6s",         # model with 6 stem weights
-        "--six-stems",               # 🔑 force 6-stem inference
+        sys.executable,
+        "-m", "demucs.separate",
+        "-n", "htdemucs",          # ⟵  four-stem model, gives drums.wav
         "-o", str(out),
         src,
     ]
@@ -39,8 +36,9 @@ def _separate_drums(src: str, work_dir: str) -> Path:
 
     drum = next(out.rglob("drums.wav"), None)
     if drum is None:
-        raise RuntimeError("drums.wav not produced – check Demucs install")
+        raise RuntimeError("drums.wav not found – Demucs model mismatch")
     return drum
+
 
 
 
